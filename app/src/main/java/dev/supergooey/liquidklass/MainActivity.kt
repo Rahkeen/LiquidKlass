@@ -1,6 +1,7 @@
 package dev.supergooey.liquidklass
 
 import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -44,6 +46,19 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
+import org.intellij.lang.annotations.Language
+
+@Language("AGSL")
+val coolShader = """
+    uniform shader composable;
+    
+    half4 main(float2 coords) {
+        half4 color = composable.eval(coords);
+        return half4(color.r, color.r, color.r, color.a);
+    }
+    
+""".trimIndent()
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +70,7 @@ class MainActivity : ComponentActivity() {
                     val backgroundLayer = rememberGraphicsLayer()
                     var overlayOffset by remember { mutableStateOf(Offset.Zero) }
                     val blurAmount by remember { mutableFloatStateOf(24f) }
+                    val shader = remember { RuntimeShader(coolShader) }
 
                     // background
                     Image(
@@ -89,9 +105,17 @@ class MainActivity : ComponentActivity() {
                                         drawLayer(backgroundLayer)
                                     }
                                 }
-                                blurLayer.renderEffect =
-                                    RenderEffect.createBlurEffect(blurAmount, blurAmount, Shader.TileMode.CLAMP)
-                                        .asComposeRenderEffect()
+                                val blurEffect = RenderEffect.createBlurEffect(blurAmount, blurAmount, Shader.TileMode.CLAMP)
+                                val shaderEffect = RenderEffect.createRuntimeShaderEffect(
+                                    shader,
+                                    "composable"
+                                )
+
+                                blurLayer.renderEffect = RenderEffect.createChainEffect(
+                                    blurEffect,
+                                    shaderEffect
+                                ).asComposeRenderEffect()
+                                
                                 drawLayer(blurLayer)
                                 drawContent()
                             },
