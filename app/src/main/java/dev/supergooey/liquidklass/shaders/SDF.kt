@@ -171,7 +171,7 @@ val gooeySdf = """
 
 @Preview
 @Composable
-private fun GooeySDF() {
+fun GooeySDF() {
     val infinite = rememberInfiniteTransition()
     val circleOffset by infinite.animateFloat(
         initialValue = 0f,
@@ -192,7 +192,6 @@ private fun GooeySDF() {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
             .drawWithCache {
                 shader.setFloatUniform(
                     "resolution",
