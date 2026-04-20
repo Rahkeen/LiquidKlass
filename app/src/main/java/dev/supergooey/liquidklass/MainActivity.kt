@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -140,9 +141,10 @@ fun App() {
     val infinite = rememberInfiniteTransition()
     var circleOffset by remember { mutableStateOf(Offset.Zero) }
     var circleCenter by remember { mutableStateOf(Offset.Zero) }
-    val circleRadius = remember { 40.dp }
+    val circleRadius = remember { 50.dp }
     var rectCenter by remember { mutableStateOf(Offset.Zero) }
-    val rectSize = remember { DpSize(width = 200.dp, height = 80.dp) }
+    val rectSize = remember { DpSize(width = 200.dp, height = 100.dp) }
+    val blurStrength by remember { mutableFloatStateOf(6 0f) }
 
     val shader = remember { RuntimeShader(gooeySdf) }
 
@@ -154,7 +156,7 @@ fun App() {
                     backgroundLayer.record { this@drawWithContent.drawContent() }
                     drawLayer(backgroundLayer)
                 },
-            painter = painterResource(R.drawable.icecream),
+            painter = painterResource(R.drawable.lillies),
             contentScale = ContentScale.Crop,
             contentDescription = ""
         )
@@ -199,15 +201,18 @@ fun App() {
 
                     shader.setFloatUniform(
                         "smoothK",
-                        80f
+                        100f
                     )
 
                     onDrawWithContent {
                         blurLayer.record { drawLayer(backgroundLayer) }
                         blurLayer.renderEffect = RenderEffect
-                            .createBlurEffect(40f, 40f, Shader.TileMode.CLAMP)
+                            .createBlurEffect(blurStrength, blurStrength, Shader.TileMode.CLAMP)
                             .asComposeRenderEffect()
                         drawLayer(graphicsLayer = blurLayer)
+                        // Tint layer — makes the glass region visually distinct
+                        drawRect(color = Color.White.copy(alpha = 0.15f))
+                        // Mask everything to the gooey SDF shape
                         drawRect(brush = ShaderBrush(shader), blendMode = BlendMode.DstIn)
                     }
                 }
@@ -217,8 +222,7 @@ fun App() {
         ) {
             Box(
                 modifier = Modifier
-                    .width(200.dp)
-                    .height(80.dp)
+                    .size(rectSize)
                     .onGloballyPositioned { coords ->
                         rectCenter = coords.boundsInRoot().center
                     }
@@ -229,7 +233,7 @@ fun App() {
                         translationX = circleOffset.x
                         translationY = circleOffset.y
                     }
-                    .size(80.dp)
+                    .size(circleRadius*2)
                     .onGloballyPositioned { coords ->
                         circleCenter = coords.boundsInRoot().center
                     }
