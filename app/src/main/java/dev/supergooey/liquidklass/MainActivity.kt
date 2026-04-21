@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,7 +64,7 @@ fun App() {
     var circleCenter by remember { mutableStateOf(Offset.Zero) }
     val circleRadius = remember { 50.dp }
     var rectCenter by remember { mutableStateOf(Offset.Zero) }
-    val rectSize = remember { DpSize(width = 200.dp, height = 100.dp) }
+    val rectSize = remember { DpSize(width = 260.dp, height = 100.dp) }
     val blurStrength by remember { mutableFloatStateOf(60f) }
     val shader = remember { RuntimeShader(gooeySdf) }
 
@@ -105,18 +106,19 @@ fun App() {
                         drawLayer(blurLayer)
 
                         // 2. Tint to make glass visible against background
-                        drawRect(color = Color.White.copy(alpha = 0.15f))
+                        drawRect(color = Color.White.copy(alpha = 0.2f))
 
                         // 3. Mask to gooey SDF shape
                         drawRect(brush = ShaderBrush(shader), blendMode = BlendMode.DstIn)
                     }
                 },
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
             // Invisible layout boxes that provide position/size for the SDF uniforms
             Box(
                 modifier = Modifier
+                    .padding(bottom = 32.dp)
                     .size(rectSize)
                     .onGloballyPositioned { coords ->
                         rectCenter = coords.boundsInRoot().center
@@ -124,6 +126,7 @@ fun App() {
             )
             Box(
                 modifier = Modifier
+                    .padding(bottom = 32.dp)
                     .graphicsLayer {
                         translationX = circleOffset.x
                         translationY = circleOffset.y
