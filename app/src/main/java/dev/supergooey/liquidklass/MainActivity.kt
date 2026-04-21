@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +40,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import dev.supergooey.liquidklass.shaders.displacementSdf
 import dev.supergooey.liquidklass.shaders.gooeySdf
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 
@@ -59,17 +59,17 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App() {
     val backgroundLayer = rememberGraphicsLayer()
-    val blurLayer = rememberGraphicsLayer()
+    val displacementLayer = rememberGraphicsLayer()
     var circleOffset by remember { mutableStateOf(Offset.Zero) }
     var circleCenter by remember { mutableStateOf(Offset.Zero) }
     val circleRadius = remember { 50.dp }
     var rectCenter by remember { mutableStateOf(Offset.Zero) }
     val rectSize = remember { DpSize(width = 260.dp, height = 100.dp) }
-    val blurStrength by remember { mutableFloatStateOf(60f) }
     val shader = remember { RuntimeShader(gooeySdf) }
+    val displacementShader = remember { RuntimeShader(displacementSdf) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Background image — captured into a layer for reuse by the blur
+        // Background image — captured into a layer for reuse
         Image(
             modifier = Modifier
                 .fillMaxSize()
@@ -82,13 +82,12 @@ fun App() {
             contentDescription = ""
         )
 
-        // Glass overlay — blurred background masked to the gooey SDF shape
+        // Glass overlay — displaced + blurred background masked to the gooey SDF shape
         Row(
             modifier = Modifier
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .fillMaxSize()
                 .drawWithCache {
-                    // Pass shape geometry to the SDF shader
                     shader.setFloatUniform("resolution", size.width, size.height)
                     shader.setFloatUniform("circleCenter", circleCenter.x, circleCenter.y)
                     shader.setFloatUniform("circleRadius", circleRadius.toPx())
@@ -97,16 +96,26 @@ fun App() {
                     shader.setFloatUniform("rectRadius", circleRadius.toPx())
                     shader.setFloatUniform("smoothK", 100f)
 
-                    onDrawWithContent {
-                        // 1. Draw blurred background
-                        blurLayer.record { drawLayer(backgroundLayer) }
-                        blurLayer.renderEffect = RenderEffect
-                            .createBlurEffect(blurStrength, blurStrength, Shader.TileMode.CLAMP)
-                            .asComposeRenderEffect()
-                        drawLayer(blurLayer)
+                    displacementShader.setFloatUniform("resolution", size.width, size.height)
+                    displacementShader.setFloatUniform("circleCenter", circleCenter.x, circleCenter.y)
+                    displacementShader.setFloatUniform("circleRadius", circleRadius.toPx())
+                    displacementShader.setFloatUniform("rectCenter", rectCenter.x, rectCenter.y)
+                    displacementShader.setFloatUniform("rectSize", rectSize.width.toPx(), rectSize.height.toPx())
+                    displacementShader.setFloatUniform("rectRadius", circleRadius.toPx())
+                    displacementShader.setFloatUniform("smoothK", 100f)
+                    displacementShader.setFloatUniform("strength", 20f)
 
-                        // 2. Tint to make glass visible against background
-                        drawRect(color = Color.White.copy(alpha = 0.2f))
+                    onDrawWithContent {
+                        // 1. Record background into displacement layer with chained effects
+                        displacementLayer.record { drawLayer(backgroundLayer) }
+                        displacementLayer.renderEffect = RenderEffect.createChainEffect(
+                            RenderEffect.createRuntimeShaderEffect(displacementShader, "contents"),
+                            RenderEffect.createBlurEffect(12f, 12f, Shader.TileMode.CLAMP)
+                        ).asComposeRenderEffect()
+                        drawLayer(displacementLayer)
+
+                        // 2. Tint to make the shape region visible
+                        drawRect(color = Color.White.copy(alpha = 0.25f))
 
                         // 3. Mask to gooey SDF shape
                         drawRect(brush = ShaderBrush(shader), blendMode = BlendMode.DstIn)
