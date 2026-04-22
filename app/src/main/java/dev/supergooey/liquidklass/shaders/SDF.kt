@@ -214,25 +214,25 @@ val displacementSdf = """
             return contents.eval(fragCoord);
         }
 
-        // Wavy glass distortion — overlapping sine waves at different
-        // frequencies and angles create an irregular ripple pattern
-        float freq1 = 0.06;
-        float freq2 = 0.09;
-        float freq3 = 0.04;
-        float2 wave = float2(
-            sin(fragCoord.y * freq1 + fragCoord.x * freq3 * 0.7)
-              + 0.5 * sin(fragCoord.y * freq2 * 1.3 - fragCoord.x * freq1)
-              + 0.3 * sin((fragCoord.x + fragCoord.y) * freq3 * 2.1),
-            sin(fragCoord.x * freq1 + fragCoord.y * freq3 * 0.6)
-              + 0.5 * sin(fragCoord.x * freq2 * 1.1 + fragCoord.y * freq2)
-              + 0.3 * sin((fragCoord.x - fragCoord.y) * freq3 * 1.8)
+        // Barrel / magnifying lens: sample outward along the SDF gradient
+        // so the rim refracts the background, while the deep interior stays
+        // close to a clean magnification.
+        float eps = 2.0;
+        float2 grad = float2(
+            sceneSDF(fragCoord + float2(eps, 0.0)) - sceneSDF(fragCoord - float2(eps, 0.0)),
+            sceneSDF(fragCoord + float2(0.0, eps)) - sceneSDF(fragCoord - float2(0.0, eps))
         );
+        float gl = length(grad);
+        if (gl > 0.0001) grad /= gl;
 
-        // Fade out displacement toward the shape center so edges still
-        // feel glassy but deep interior is calmer
-        float falloff = smoothstep(-80.0, 0.0, d);
+        // Normalize depth inside the shape: 0 at edge -> 1 at deepest point we care about
+        float maxDepth = 80.0;
+        float t = clamp(-d / maxDepth, 0.0, 1.0);
 
-        float2 displaced = fragCoord + wave * strength * falloff;
+        // Barrel-style edge weighting: heavy bend at the rim, falls off toward center
+        float edge = pow(1.0 - t, 2.0);
+
+        float2 displaced = fragCoord + grad * strength * edge;
         displaced = clamp(displaced, float2(0.0), resolution);
 
         return contents.eval(displaced);
