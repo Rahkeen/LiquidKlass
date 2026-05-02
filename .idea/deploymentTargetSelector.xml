@@ -6,13 +6,6 @@
         <option name="selectionMode" value="DROPDOWN" />
         <DialogSelection />
       </SelectionState>
-      <SelectionState runConfigName="GooeySDF">
-        <option name="selectionMode" value="DROPDOWN" />
-        <DialogSelection />
-      </SelectionState>
-      <SelectionState runConfigName="DisplacementMapDemo">
-        <option name="selectionMode" value="DROPDOWN" />
-      </SelectionState>
     </selectionStates>
   </component>
 </project>
