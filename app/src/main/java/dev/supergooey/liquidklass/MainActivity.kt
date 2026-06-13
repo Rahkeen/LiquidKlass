@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.supergooey.liquidklass.pipeline.BackdropScene
 import dev.supergooey.liquidklass.shaders.displacementSdf
 import dev.supergooey.liquidklass.shaders.gooeySdf
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LiquidKlassTheme {
-                App()
+                BackdropScene()
             }
         }
     }
