@@ -46,16 +46,18 @@ private val zoomShader = """
     uniform float2 center;
     uniform float radius;
     
-    float sdCircle(float2 p, float2 c, float r) {
-        return length(c - p) - r;
+    float3 sdgCircle(float2 p, float2 c, float r) {
+        float l = length(p-c);
+        return float3(l-r, (p-c)/l);
     }
     
     half4 main(float2 coords) {
-        float2 pivot = resolution * 0.5;
-        float d = sdCircle(coords, center, radius);
+        float3 sdg = sdgCircle(coords, center, radius);
+        float d = sdg.x;
+        float2 g = sdg.yz;
         if (d < 0.0) {
-            float2 zoomed = (coords - pivot) / 2.0 + pivot;
-            return background.eval(zoomed);
+            half3 color = half3(g * 0.5 + 0.5, 1.0);
+            return half4(color, 1.0);
         }
         return background.eval(coords);
     }
