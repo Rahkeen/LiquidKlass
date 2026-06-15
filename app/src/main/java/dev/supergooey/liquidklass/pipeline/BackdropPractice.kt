@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.painterResource
@@ -42,11 +43,21 @@ import org.intellij.lang.annotations.Language
 private val zoomShader = """
     uniform shader background;
     uniform float2 resolution;
+    uniform float2 center;
+    uniform float radius;
+    
+    float sdCircle(float2 p, float2 c, float r) {
+        return length(c - p) - r;
+    }
     
     half4 main(float2 coords) {
-        float2 uv = coords / resolution;
-        float2 zoomed = (uv - 0.5) / 2.0 + 0.5;
-        return background.eval(zoomed * resolution);
+        float2 pivot = resolution * 0.5;
+        float d = sdCircle(coords, center, radius);
+        if (d < 0.0) {
+            float2 zoomed = (coords - pivot) / 2.0 + pivot;
+            return background.eval(zoomed);
+        }
+        return background.eval(coords);
     }
 """.trimIndent()
 
@@ -83,12 +94,20 @@ fun BackdropScene() {
                     Log.d("Hello", "Position: $backdropOffset")
                 }
                 .align(Alignment.Center)
-                .clip(CircleShape)
                 .drawWithCache {
                     shader.setFloatUniform(
                         "resolution",
                         size.width,
                         size.height
+                    )
+                    shader.setFloatUniform(
+                        "center",
+                        size.width / 2f,
+                        size.height / 2f
+                    )
+                    shader.setFloatUniform(
+                        "radius",
+                        100.dp.toPx()
                     )
                     onDrawWithContent {
                         effectLayer.record {
@@ -100,13 +119,14 @@ fun BackdropScene() {
                             shader,
                             "background"
                         )
+
                         val blurEffect = RenderEffect.createBlurEffect(
                             32f,
                             32f,
                             shaderEffect,
                             Shader.TileMode.CLAMP
                         )
-                        effectLayer.renderEffect = blurEffect.asComposeRenderEffect()
+                        effectLayer.renderEffect = shaderEffect.asComposeRenderEffect()
                         drawLayer(effectLayer)
                     }
                 }
