@@ -52,12 +52,16 @@ private val zoomShader = """
     }
     
     half4 main(float2 coords) {
+        float strength = 100.0;
+        float2 lightDir = float2(1.0, -1.0);
         float3 sdg = sdgCircle(coords, center, radius);
         float d = sdg.x;
         float2 g = sdg.yz;
         if (d < 0.0) {
-            half3 color = half3(g * 0.5 + 0.5, 1.0);
-            return half4(color, 1.0);
+            float t = -d / radius;
+            float bulge = 1.0 - t * t;
+            float2 sampleCoords = coords - g * bulge * strength;
+            return background.eval(sampleCoords);
         }
         return background.eval(coords);
     }
@@ -125,9 +129,13 @@ fun BackdropScene() {
                         val blurEffect = RenderEffect.createBlurEffect(
                             32f,
                             32f,
-                            shaderEffect,
                             Shader.TileMode.CLAMP
                         )
+                        val chain = RenderEffect.createChainEffect(
+                            shaderEffect,
+                                    blurEffect,
+                        )
+
                         effectLayer.renderEffect = shaderEffect.asComposeRenderEffect()
                         drawLayer(effectLayer)
                     }
