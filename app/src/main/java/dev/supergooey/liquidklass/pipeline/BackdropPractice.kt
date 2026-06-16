@@ -46,6 +46,15 @@ private val zoomShader = """
     uniform float2 center;
     uniform float radius;
     uniform float distortion;
+    uniform float grainStrength;
+
+    float hash12(float2 p) {
+        return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+    }
+
+    float2 grainOffset(float2 p) {
+        return float2(hash12(p), hash12(p + 17.0)) - 0.5;
+    }
 
     float2 distort(float2 p) {
         float d = length(p);
@@ -61,7 +70,8 @@ private val zoomShader = """
         if (d < 1.0) {
             float2 dp = distort(p) * 2.0;
             float2 distortedCoords = center + dp * radius;
-            return background.eval(distortedCoords);
+            float2 jitter = grainOffset(coords) * grainStrength;
+            return background.eval(distortedCoords + jitter);
         }
         return background.eval(coords);
     }
@@ -118,6 +128,10 @@ fun BackdropScene() {
                     shader.setFloatUniform(
                         "distortion",
                         3.0f
+                    )
+                    shader.setFloatUniform(
+                        "grainStrength",
+                        20.0f
                     )
                     onDrawWithContent {
                         effectLayer.record {
