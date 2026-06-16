@@ -45,23 +45,23 @@ private val zoomShader = """
     uniform float2 resolution;
     uniform float2 center;
     uniform float radius;
-    
-    float3 sdgCircle(float2 p, float2 c, float r) {
-        float l = length(p-c);
-        return float3(l-r, (p-c)/l);
+    uniform float distortion;
+
+    float2 distort(float2 p) {
+        float d = length(p);
+        float z = sqrt(distortion + d * d * -distortion);
+        float r = atan(d, z) / 3.1415926535;
+        float phi = atan(p.y, p.x);
+        return float2(r * cos(phi), r * sin(phi));
     }
-    
+
     half4 main(float2 coords) {
-        float strength = 100.0;
-        float2 lightDir = float2(1.0, -1.0);
-        float3 sdg = sdgCircle(coords, center, radius);
-        float d = sdg.x;
-        float2 g = sdg.yz;
-        if (d < 0.0) {
-            float t = -d / radius;
-            float bulge = 1.0 - t * t;
-            float2 sampleCoords = coords - g * bulge * strength;
-            return background.eval(sampleCoords);
+        float2 p = (coords - center) / radius;
+        float d = length(p);
+        if (d < 1.0) {
+            float2 dp = distort(p) * 2.0;
+            float2 distortedCoords = center + dp * radius;
+            return background.eval(distortedCoords);
         }
         return background.eval(coords);
     }
@@ -114,6 +114,10 @@ fun BackdropScene() {
                     shader.setFloatUniform(
                         "radius",
                         100.dp.toPx()
+                    )
+                    shader.setFloatUniform(
+                        "distortion",
+                        3.0f
                     )
                     onDrawWithContent {
                         effectLayer.record {
