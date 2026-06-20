@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -28,7 +26,6 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.painterResource
@@ -36,7 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import dev.supergooey.liquidklass.R
-import dev.supergooey.liquidklass.shaders.glass
+import dev.supergooey.liquidklass.shaders.glassShader
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 
@@ -71,8 +68,9 @@ fun BackdropScene() {
     Box(modifier = Modifier.fillMaxSize()) {
         val backdropLayer = rememberGraphicsLayer()
         var backdropOffset by remember { mutableStateOf(Offset.Zero) }
+        val thickness = remember { 10.dp }     // play with this — wider = bigger refracting bevel
         val effectLayer = rememberGraphicsLayer()
-        val shader = remember { RuntimeShader(glass) }
+        val shader = remember { RuntimeShader(glassShader) }
 
         var glassPosition by remember { mutableStateOf(Offset.Zero)}
 
@@ -113,6 +111,10 @@ fun BackdropScene() {
                     shader.setFloatUniform(
                         "radius",
                         100.dp.toPx()
+                    )
+                    shader.setFloatUniform(
+                        "thickness",
+                        thickness.toPx()
                     )
                     onDrawWithContent {
                         effectLayer.record {
