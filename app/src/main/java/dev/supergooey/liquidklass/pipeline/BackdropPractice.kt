@@ -36,50 +36,31 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import dev.supergooey.liquidklass.R
+import dev.supergooey.liquidklass.shaders.glass
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 
 @Language("AGSL")
 private val zoomShader = """
     uniform shader background;
-    uniform float2 resolution;
     uniform float2 center;
     uniform float radius;
-    uniform float distortion;
-    uniform float grainStrength;
-    uniform float3 lightDir;
-    uniform float rimStrength;
-    uniform float rimSharpness;
+    uniform float strength;
 
-    float hash12(float2 p) {
-        return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
-    }
-
-    float2 grainOffset(float2 p) {
-        return float2(hash12(p), hash12(p + 17.0)) - 0.5;
-    }
-
-    float2 distort(float2 p) {
-        float d = length(p);
-        float z = sqrt(distortion + d * d * -distortion);
-        float r = atan(d, z) / 3.1415926535;
-        float phi = atan(p.y, p.x);
-        return float2(r * cos(phi), r * sin(phi));
+    float3 sdgCircle(float2 p, float2 c, float r) {
+        float l = length(p - c);
+        return float3(l - r, (p - c) / l);
     }
 
     half4 main(float2 coords) {
-        float2 p = (coords - center) / radius;
-        float d = length(p);
-        if (d < 1.0) {
-            float2 dp = distort(p) * 2.0;
-            float2 distortedCoords = center + dp * radius;
-            float2 jitter = grainOffset(coords) * grainStrength;
-            half4 base = background.eval(distortedCoords + jitter);
-
-            float3 N = float3(p, sqrt(1.0 - d * d));
-            float3 L = normalize(lightDir);
-            float rim = pow(d, rimSharpness) * max(dot(N, L), 0.0);
-            return half4(base.rgb + half3(rim * rimStrength), base.a);
+        float3 sdg = sdgCircle(coords, center, radius);
+        float d = sdg.x;
+        float2 g = sdg.yz;
+        if (d < 0.0) {
+            float t = -d / radius;
+            float bulge = 1.0 - t * t;
+            float2 sampleCoords = coords - g * bulge * strength;
+            return background.eval(sampleCoords);
         }
         return background.eval(coords);
     }
@@ -91,7 +72,7 @@ fun BackdropScene() {
         val backdropLayer = rememberGraphicsLayer()
         var backdropOffset by remember { mutableStateOf(Offset.Zero) }
         val effectLayer = rememberGraphicsLayer()
-        val shader = remember { RuntimeShader(zoomShader) }
+        val shader = remember { RuntimeShader(glass) }
 
         var glassPosition by remember { mutableStateOf(Offset.Zero)}
 
@@ -133,26 +114,6 @@ fun BackdropScene() {
                         "radius",
                         100.dp.toPx()
                     )
-                    shader.setFloatUniform(
-                        "distortion",
-                        3.0f
-                    )
-                    shader.setFloatUniform(
-                        "grainStrength",
-                        1.0f
-                    )
-                    shader.setFloatUniform(
-                        "lightDir",
-                        -1f, -1f, 1f
-                    )
-                    shader.setFloatUniform(
-                        "rimStrength",
-                        0.8f
-                    )
-                    shader.setFloatUniform(
-                        "rimSharpness",
-                        4.0f
-                    )
                     onDrawWithContent {
                         effectLayer.record {
                             translate(left = -backdropOffset.x, top = -backdropOffset.y) {
@@ -171,7 +132,7 @@ fun BackdropScene() {
                         )
                         val chain = RenderEffect.createChainEffect(
                             shaderEffect,
-                                    blurEffect,
+                            blurEffect,
                         )
 
                         effectLayer.renderEffect = shaderEffect.asComposeRenderEffect()
