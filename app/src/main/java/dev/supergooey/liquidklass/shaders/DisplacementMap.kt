@@ -33,7 +33,8 @@ private val displacementShader = """
     uniform float2 center;
     uniform float radius;
     
-    const float refraction = 0.05;
+    const float refraction = 0.7;
+    const float rimBoost = 0.4;
     const float rim = 10.0;
     
     float sdCircle(float2 p, float2 c, float r) {
@@ -44,10 +45,23 @@ private val displacementShader = """
         float2 p = point - center; // point relative to circle center
         float dist = length(p);
         float d = dist - radius;
-        float2 grad = normalize(p);
         
-        float mask = 1.0 - smoothstep(0, rim, abs(d));
-        float2 displacement = grad * refraction * mask * resolution.y;
+        if (d > rim) {
+            return background.eval(point);
+        }
+        
+        float2 dir = normalize(p);
+        
+        // spherical bulge
+        float t = clamp(dist / radius, 0.0, 1.0);
+        float baseFalloff = t * t;
+        
+        // rim boost mask
+        float rimMask = 1.0 - smoothstep(0.0, rim, abs(d));
+        
+        // combine 
+        float totalStrength = refraction * baseFalloff + rimBoost * rimMask;
+        float2 displacement = dir * totalStrength * radius; 
         float2 targetCoord = point + displacement;
         
         return background.eval(targetCoord);
