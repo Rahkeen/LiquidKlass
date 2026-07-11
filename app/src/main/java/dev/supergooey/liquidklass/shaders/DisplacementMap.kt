@@ -89,13 +89,12 @@ private val displacementShader = """
 
 @Preview
 @Composable
-private fun DisplacementMap1() {
+fun DisplacementMap1() {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(displacementShader) }
         val radius = remember { 100.dp }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
-        // Live-tunable shader parameters.
         var refraction by remember { mutableFloatStateOf(0.6f) }
         var rimBoost by remember { mutableFloatStateOf(0.4f) }
         var rim by remember { mutableFloatStateOf(5.0f) }
