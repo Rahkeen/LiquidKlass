@@ -3,6 +3,7 @@ package dev.supergooey.liquidklass.shaders
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,45 +48,27 @@ private val displacementShader = """
     uniform float2 resolution;
     uniform float2 center;
     uniform float radius;
-    uniform float refraction;
     uniform float rimBoost;
     uniform float rim;
-    uniform float aberration;
 
     half4 main(float2 point) {
-        float2 p = point - center; // point relative to circle center
+        float2 p = point - center;   // point relative to circle center
         float dist = length(p);
-        float d = dist - radius;
-        
-        if (d > rim) {
+        float d = dist - radius;     // signed distance from the edge: negative inside, positive outside
+
+        // Only touch the ring of pixels within `rim` px of the boundary on either side.
+        if (abs(d) > rim) {
             return background.eval(point);
         }
-        
-        float2 dir = normalize(p);
-        
-        // spherical bulge
-        float t = clamp(dist / radius, 0.0, 1.0);
-        float baseFalloff = t * t;
-        
-        // rim boost mask
+
+        float2 dir = normalize(p);   // radial direction, pointing away from center
+
+        // 1 exactly on the edge (d == 0), falling off to 0 at |d| == rim.
         float rimMask = 1.0 - smoothstep(0.0, rim, abs(d));
-        
-        // combine
-        float totalStrength = refraction * baseFalloff + rimBoost * rimMask;
-        float2 displacement = dir * totalStrength * radius;
 
-        // sample each channel with a slightly different displacement so
-        // wavelengths separate. R bends least, B bends most.
-        float2 rCoord = point + displacement * (1.0 - aberration);
-        float2 gCoord = point + displacement;
-        float2 bCoord = point + displacement * (1.0 + aberration);
+        float2 displacement = dir * rimBoost * rimMask * radius;
 
-        half r = background.eval(rCoord).r;
-        half g = background.eval(gCoord).g;
-        half b = background.eval(bCoord).b;
-        half a = background.eval(gCoord).a;
-
-        return half4(r, g, b, a);
+        return background.eval(point + displacement);
     }
 """.trimIndent()
 
@@ -95,10 +80,8 @@ fun DisplacementMap1() {
         val radius = remember { 100.dp }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
-        var refraction by remember { mutableFloatStateOf(0.6f) }
         var rimBoost by remember { mutableFloatStateOf(0.4f) }
         var rim by remember { mutableFloatStateOf(5.0f) }
-        var aberration by remember { mutableFloatStateOf(0.2f) }
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Top half: image + shader.
@@ -128,10 +111,8 @@ fun DisplacementMap1() {
                                 setFloatUniform("resolution", size.width, size.height)
                                 setFloatUniform("center", c.x, c.y)
                                 setFloatUniform("radius", radius.toPx())
-                                setFloatUniform("refraction", refraction)
                                 setFloatUniform("rimBoost", rimBoost)
                                 setFloatUniform("rim", rim)
-                                setFloatUniform("aberration", aberration)
                             }
                             renderEffect = RenderEffect.createRuntimeShaderEffect(
                                 shader,
@@ -149,13 +130,12 @@ fun DisplacementMap1() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .background(color = MaterialTheme.colorScheme.background)
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                ParamSlider("Refraction", refraction, 0f..1f) { refraction = it }
                 ParamSlider("Rim Boost", rimBoost, 0f..1f) { rimBoost = it }
                 ParamSlider("Rim", rim, 0f..20f) { rim = it }
-                ParamSlider("Aberration", aberration, 0f..0.5f) { aberration = it }
             }
         }
     }
@@ -168,7 +148,7 @@ private fun ParamSlider(
     range: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit
 ) {
-    Text(text = "$label: ${"%.3f".format(value)}")
+    Text(color = MaterialTheme.colorScheme.onBackground, text = "$label: ${"%.3f".format(value)}")
     Slider(
         value = value,
         onValueChange = onValueChange,
