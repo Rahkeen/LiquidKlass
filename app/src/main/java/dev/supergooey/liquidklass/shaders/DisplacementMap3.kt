@@ -5,7 +5,9 @@ import android.graphics.RuntimeShader
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,21 +38,31 @@ private val circleSdfShader = """
     uniform float2 resolution;
     uniform float2 center;
     uniform float radius;
+    
+    float3 sdgCircle(float2 p, float2 c, float r) {
+        float2 centered = p - c;
+        float dist = length(centered);
+        float d = dist - r;
+        
+        return float3(centered / dist, d);
+    }
 
     half4 main(float2 point) {
-        float2 p = point - center;
-        float dist = length(p);
-        float2 dir = p / dist;
-
-        if (dist > radius) {
+        float3 sdg = sdgCircle(point, center, radius);
+        float2 dir = sdg.xy;
+        float d = sdg.z;
+        
+        if (d > 0) {
             return background.eval(point);
         }
         
-        float red = dir.x * 0.5 + 0.5;
-        float green = dir.y * 0.5 + 0.5;
-        float blue = 0.0;
-
-        return half4(red,green,blue,1.0);
+        float t = 1.0 + d / radius; // moves t to 0..1
+        t = t*t;
+        float2 displacement = dir * t;
+        float2 offset = displacement * 60;
+        half4 color = half4(displacement * 0.5 + 0.5, 0.5, 1.0);
+//        half4 color = background.eval(point - offset);
+        return color;
     }
 """.trimIndent()
 
