@@ -43,33 +43,41 @@ val circleDisplacementShader = """
     
     float3 sdgCircle(float2 point, float2 center, float radius) {
         float2 relative = point - center;
-        float distance = length(relative);
+        float distance = max(length(relative), 0.0001);
         float d = distance - radius;
-        
+
         return float3(relative / distance, d);
     }
-    
+
     half4 main(float2 point) {
         float3 sdg = sdgCircle(point, center, radius);
-        float2 dir = sdg.xy; // -1..1
-        float d = sdg.z;
-        
-        if (d > 0) {
-            return background.eval(point);
-        }
-        
-        float t = 1.0 + d / radius; // 0..1, 0 close to center
+        float2 dir = sdg.xy; // outward normal, -1..1
+        float d = sdg.z; // signed distance from radius, negative inside
+
+        float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
+
+        float t = clamp(1.0 + d / radius, 0.0, 1.0); // 0 close to center, 1 at edge
         float ramp = t*t*t; // change ramp from linear to whatever
         float2 displacement = dir * ramp; // apply that ramp to dir
-        half4 vis = half4(displacement * 0.5 + 0.5, 0.0, 1.0);
-        
+
         float strength = 100.0;
         float abberation = 2.0;
-        float r = background.eval(point - displacement * strength - dir * abberation).r;
-        float g = background.eval(point - displacement * strength).g;
-        float b = background.eval(point - displacement * strength + dir * abberation).b;
-        
-        return half4(r,g,b,1.0);
+        float2 offset = displacement * strength;
+        float r = background.eval(point - offset - dir * abberation).r;
+        float g = background.eval(point - offset).g;
+        float b = background.eval(point - offset + dir * abberation).b;
+        half4 refracted = half4(r, g, b, 1.0);
+
+        // rim highlight: thin specular band around the edge, brightest toward the light
+        float rimWidth = 3.0;
+        float rim = 1.0 - smoothstep(0.0, rimWidth, abs(d));
+        float2 lightDir = normalize(float2(1.0, 0.0));
+        float lightDot = abs(dot(dir, lightDir)); // mirror: light hits both ends of this axis
+        float highlight = rim * pow(lightDot, 2.0);
+        half4 withRim = mix(refracted, half4(1.0), highlight * 0.8);
+
+        half4 outside = background.eval(point);
+        return mix(outside, withRim, mask);
     }
     
 """.trimIndent()
