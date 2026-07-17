@@ -101,7 +101,7 @@ fun DisplacementMap4() {
         val radius = remember { 100.dp }
         val ior = remember { 1.5f }
         val strength = remember { 60f }
-        val aberration = remember { 0.4f }
+        val aberration = remember { 0.2f }
         var showNormals by remember { mutableStateOf(false) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 

@@ -60,8 +60,8 @@ private val circleSdfShader = """
         t = t*t;
         float2 displacement = dir * t;
         float2 offset = displacement * 60;
-        half4 color = half4(displacement * 0.5 + 0.5, 0.5, 1.0);
-//        half4 color = background.eval(point - offset);
+//        half4 color = half4(displacement * 0.5 + 0.5, 0.5, 1.0);
+        half4 color = background.eval(point - offset);
         return color;
     }
 """.trimIndent()

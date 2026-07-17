@@ -49,9 +49,9 @@ private val gradientVisualizerShader = """
         // remap from [-1, 1] to [0, 1] so it can be shown as a color
         float2 vis = dir * 0.5 + 0.5;
         float inner = abs(dist / radius);
-        inner = inner * inner * inner;
+        inner = inner;
         
-        return half4(vis.x*inner, vis.y*inner, 1.0, 1.0);
+        return half4(vis.x*inner, vis.y*inner, 0.0, 1.0);
     }
 """.trimIndent()
 
