@@ -7,7 +7,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
@@ -39,6 +39,7 @@ val circleDisplacementShader = """
     uniform shader background;
     uniform float2 resolution;
     uniform float2 center;
+    uniform float2 halfSize;
     uniform float radius;
     
     float3 sdgCircle(float2 point, float2 center, float radius) {
@@ -48,19 +49,36 @@ val circleDisplacementShader = """
 
         return float3(relative / distance, d);
     }
+    
+    float3 sdgRect(float2 point, float2 center, float2 halfSize, float radius) {
+        float2 p = point - center; // point relative to center
+        float2 b = halfSize - radius; // core box remove the corner radius length
+        float2 w = abs(p) - b; // negative means inside core box, positive means sticking out
+        float2 q = max(w, 0.0); // capturing the corner portusion area
+        float g = max(w.x, w.y);
+        
+        float dBox = g > 0 ? length(q) : g;
+        float d = dBox - radius;
+        
+        float2 s = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
+        float2 dir = s * (g > 0.0 ? q / length(q) : (w.x > w.y ? float2(1.0, 0.0) : float2(0.0, 1.0)));
+        return float3(dir, d);
+    }
 
     half4 main(float2 point) {
-        float3 sdg = sdgCircle(point, center, radius);
+        float clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+        float3 sdg = sdgRect(point, center, halfSize, clampedRadius);
         float2 dir = sdg.xy; // outward normal, -1..1
         float d = sdg.z; // signed distance from radius, negative inside
 
         float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
-
-        float t = clamp(1.0 + d / radius, 0.0, 1.0); // 0 close to center, 1 at edge
+        
+        float refractionLength = min(halfSize.x, halfSize.y);
+        float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
         float ramp = t*t*t; // change ramp from linear to whatever
         float2 displacement = dir * ramp; // apply that ramp to dir
 
-        float strength = 100.0;
+        float strength = 60.0;
         float abberation = 2.0;
         float2 offset = displacement * strength;
         float r = background.eval(point - offset - dir * abberation).r;
@@ -69,9 +87,9 @@ val circleDisplacementShader = """
         half4 refracted = half4(r, g, b, 1.0);
 
         // rim highlight: thin specular band around the edge, brightest toward the light
-        float rimWidth = 3.0;
+        float rimWidth = 10;
         float rim = 1.0 - smoothstep(0.0, rimWidth, abs(d));
-        float2 lightDir = normalize(float2(1.0, 0.0));
+        float2 lightDir = normalize(float2(-1.0, -1.0));
         float lightDot = abs(dot(dir, lightDir)); // mirror: light hits both ends of this axis
         float highlight = rim * pow(lightDot, 2.0);
         half4 withRim = mix(refracted, half4(1.0), highlight * 0.8);
@@ -92,7 +110,8 @@ val sphereDisplacementShader = """
 private fun CircleDisplacementMap() {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(circleDisplacementShader) }
-        val radius = remember { 100.dp }
+        val radius = remember { 40.dp }
+        val boxSize = remember { DpSize(width = 100.dp, height = 60.dp) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -113,27 +132,37 @@ private fun CircleDisplacementMap() {
                         } else {
                             center
                         }
-                        shader.setFloatUniform("resolution", size.width, size.height)
-                        shader.setFloatUniform("center", c.x, c.y)
-                        shader.setFloatUniform("radius", radius.toPx())
+                        shader.setFloatUniform(
+                            "resolution",
+                            size.width,
+                            size.height
+                        )
+                        shader.setFloatUniform(
+                            "center",
+                            c.x,
+                            c.y
+                        )
+                        shader.setFloatUniform(
+                            "halfSize",
+                            boxSize.width.toPx() / 2,
+                            boxSize.height.toPx() / 2
+                        )
+                        shader.setFloatUniform(
+                            "radius",
+                            radius.toPx()
+                        )
 
                         renderEffect = RenderEffect.createRuntimeShaderEffect(
                             shader,
                             "background"
                         ).asComposeRenderEffect()
                     },
-                painter = painterResource(R.drawable.icecream),
+                painter = painterResource(R.drawable.bikes),
                 contentScale = ContentScale.Crop,
                 contentDescription = "Hi"
             )
         }
     }
-}
-
-@Preview
-@Composable
-private fun SphereDisplacementMap() {
-
 }
 
 @Composable
