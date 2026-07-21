@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -58,33 +61,35 @@ val circleDisplacementShader = """
     uniform float rimIntensity;
     uniform float2 lightDir;
     uniform float rampPower;
+    uniform float showGradient;
+    uniform float gradientEps;
 
-    float3 sdgCircle(float2 point, float2 center, float radius) {
-        float2 relative = point - center;
-        float distance = max(length(relative), 0.0001);
-        float d = distance - radius;
-
-        return float3(relative / distance, d);
-    }
-    
-    float3 sdgRect(float2 point, float2 center, float2 halfSize, float radius) {
-        float2 p = point - center; // point relative to center
-        float2 b = halfSize - radius; // core box remove the corner radius length
-        float2 w = abs(p) - b; // negative means inside core box, positive means sticking out
-        float2 q = max(w, 0.0); // capturing the corner portusion area
+    // scalar-only distance, no hand-derived direction branches — reusable by the FD gradient below
+    float sdRect(float2 point, float2 center, float2 halfSize, float radius) {
+        float2 p = point - center;
+        float2 b = halfSize - radius;
+        float2 w = abs(p) - b;
+        float2 q = max(w, 0.0);
         float g = max(w.x, w.y);
-        
-        float dBox = g > 0 ? length(q) : g;
-        float d = dBox - radius;
-        
-        float2 s = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
-        float2 dir = s * (g > 0.0 ? q / length(q) : (w.x > w.y ? float2(1.0, 0.0) : float2(0.0, 1.0)));
+        return (g > 0.0 ? length(q) : g) - radius;
+    }
+
+    // numerical gradient via central differences; eps also acts as a smoothing radius
+    // across the medial-axis seam where the analytic direction field is discontinuous
+    float3 sdgRectFD(float2 point, float2 center, float2 halfSize, float radius, float eps) {
+        float d = sdRect(point, center, halfSize, radius);
+        float dx = sdRect(point + float2(eps, 0.0), center, halfSize, radius)
+                  - sdRect(point - float2(eps, 0.0), center, halfSize, radius);
+        float dy = sdRect(point + float2(0.0, eps), center, halfSize, radius)
+                  - sdRect(point - float2(0.0, eps), center, halfSize, radius);
+        float2 grad = float2(dx, dy) / (2.0 * eps);
+        float2 dir = grad / max(length(grad), 0.0001);
         return float3(dir, d);
     }
 
     half4 main(float2 point) {
         float clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
-        float3 sdg = sdgRect(point, center, halfSize, clampedRadius);
+        float3 sdg = sdgRectFD(point, center, halfSize, clampedRadius, gradientEps);
         float2 dir = sdg.xy; // outward normal, -1..1
         float d = sdg.z; // signed distance from radius, negative inside
 
@@ -108,7 +113,14 @@ val circleDisplacementShader = """
         half4 withRim = mix(refracted, half4(1.0), highlight * rimIntensity);
 
         half4 outside = background.eval(point);
-        return mix(outside, withRim, mask);
+        half4 result = mix(outside, withRim, mask);
+
+        // gradient visualization: displacement (dir * ramp) remapped from [-1,1] to [0,1]
+        // as red/green, dimmed background so the field reads clearly against it
+        half4 gradientColor = half4(displacement.x * 0.5 + 0.5, displacement.y * 0.5 + 0.5, 0.0, 1.0);
+        half4 gradientVis = mix(half4(0.05, 0.05, 0.05, 1.0), gradientColor, mask);
+
+        return mix(result, gradientVis, showGradient);
     }
     
 """.trimIndent()
@@ -120,7 +132,7 @@ val sphereDisplacementShader = """
 
 @Preview
 @Composable
-private fun CircleDisplacementMap() {
+fun CircleDisplacementMap() {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(circleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
@@ -134,6 +146,8 @@ private fun CircleDisplacementMap() {
         var rimIntensity by remember { mutableFloatStateOf(0.8f) }
         var lightAngleDeg by remember { mutableFloatStateOf(225f) }
         var rampPower by remember { mutableFloatStateOf(3f) }
+        var showGradient by remember { mutableStateOf(false) }
+        var gradientEps by remember { mutableFloatStateOf(10f) }
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Top half: image + shader.
@@ -179,6 +193,8 @@ private fun CircleDisplacementMap() {
                                     sin(angleRad).toFloat()
                                 )
                                 setFloatUniform("rampPower", rampPower)
+                                setFloatUniform("showGradient", if (showGradient) 1f else 0f)
+                                setFloatUniform("gradientEps", gradientEps)
                             }
 
                             renderEffect = RenderEffect.createRuntimeShaderEffect(
@@ -207,9 +223,18 @@ private fun CircleDisplacementMap() {
                 ParamSlider("Strength", strength, 0f..150f) { strength = it }
                 ParamSlider("Aberration", aberration, 0f..15f) { aberration = it }
                 ParamSlider("Rim Width", rimWidth, 0f..30f) { rimWidth = it }
-                ParamSlider("Rim Intensity", rimIntensity, 0f..1f) { rimIntensity = it }
+                ParamSlider("Rim Intensity", rimIntensity, 0f..1f, step = 0.05f) { rimIntensity = it }
                 ParamSlider("Light Angle", lightAngleDeg, 0f..360f) { lightAngleDeg = it }
-                ParamSlider("Ramp Power", rampPower, 0.5f..6f) { rampPower = it }
+                ParamSlider("Ramp Power", rampPower, 1f..6f) { rampPower = it }
+                ParamSlider("Gradient Eps", gradientEps, 1f..40f) { gradientEps = it }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        text = "Show Gradient"
+                    )
+                    Switch(checked = showGradient, onCheckedChange = { showGradient = it })
+                }
             }
         }
     }
@@ -220,13 +245,17 @@ private fun ParamSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
+    step: Float = 1f,
     onValueChange: (Float) -> Unit
 ) {
-    Text(color = MaterialTheme.colorScheme.onBackground, text = "$label: ${"%.3f".format(value)}")
+    val steps = (((range.endInclusive - range.start) / step).roundToInt() - 1).coerceAtLeast(0)
+    val format = if (step >= 1f) "%.0f" else "%.2f"
+    Text(color = MaterialTheme.colorScheme.onBackground, text = "$label: ${format.format(value)}")
     Slider(
         value = value,
         onValueChange = onValueChange,
-        valueRange = range
+        valueRange = range,
+        steps = steps
     )
 }
 

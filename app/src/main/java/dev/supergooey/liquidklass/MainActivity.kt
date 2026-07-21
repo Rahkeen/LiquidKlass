@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.supergooey.liquidklass.pipeline.BackdropScene
+import dev.supergooey.liquidklass.shaders.CircleDisplacementMap
 import dev.supergooey.liquidklass.shaders.DisplacementMap1
 import dev.supergooey.liquidklass.shaders.displacementSdf
 import dev.supergooey.liquidklass.shaders.gooeySdf
@@ -66,7 +67,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            DisplacementMap1()
+            CircleDisplacementMap()
         }
     }
 }
