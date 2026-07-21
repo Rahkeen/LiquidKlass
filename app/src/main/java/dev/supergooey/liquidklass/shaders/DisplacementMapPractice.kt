@@ -94,7 +94,7 @@ val circleDisplacementShader = """
         float d = sdg.z; // signed distance from radius, negative inside
 
         float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
-        
+
         float refractionLength = min(halfSize.x, halfSize.y);
         float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
         float ramp = pow(t, rampPower); // change ramp curve via uniform
@@ -122,32 +122,131 @@ val circleDisplacementShader = """
 
         return mix(result, gradientVis, showGradient);
     }
-    
+
+""".trimIndent()
+
+// same shader as circleDisplacementShader, but the gradient comes from an exact analytic
+// derivation of the rounded-box SDF instead of a finite-difference approximation — no eps,
+// one fewer SDF eval, but the medial-axis seam is a hard discontinuity instead of smoothed.
+@Language("AGSL")
+val analyticalDisplacementShader = """
+    uniform shader background;
+    uniform float2 resolution;
+    uniform float2 center;
+    uniform float2 halfSize;
+    uniform float radius;
+    uniform float strength;
+    uniform float aberration;
+    uniform float rimWidth;
+    uniform float rimIntensity;
+    uniform float2 lightDir;
+    uniform float rampPower;
+    uniform float showGradient;
+
+    // analytic signed distance + outward gradient for a rounded box, centered at origin.
+    // reduces exactly to a circle's SDF/gradient when halfSize.x == halfSize.y == radius.
+    float3 sdgRoundBox(float2 p, float2 halfSize, float radius) {
+        float2 b = halfSize - radius;
+        float2 w = abs(p) - b;
+        float2 s = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
+        float g = max(w.x, w.y);
+        float2 q = max(w, 0.0);
+        float l = length(q);
+        float2 dir = s * (g > 0.0 ? q / max(l, 0.0001) : (w.x > w.y ? float2(1.0, 0.0) : float2(0.0, 1.0)));
+        float d = (g > 0.0 ? l : g) - radius;
+        return float3(dir, d);
+    }
+
+    half4 main(float2 point) {
+        float clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+        float3 sdg = sdgRoundBox(point - center, halfSize, clampedRadius);
+        float2 dir = sdg.xy; // outward normal, -1..1
+        float d = sdg.z; // signed distance from radius, negative inside
+
+        float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
+
+        float refractionLength = min(halfSize.x, halfSize.y);
+        float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
+        float ramp = pow(t, rampPower); // change ramp curve via uniform
+        float2 displacement = dir * ramp; // apply that ramp to dir
+
+        float2 offset = displacement * strength;
+        float r = background.eval(point - offset - dir * aberration).r;
+        float g = background.eval(point - offset).g;
+        float b = background.eval(point - offset + dir * aberration).b;
+        half4 refracted = half4(r, g, b, 1.0);
+
+        // rim highlight: thin specular band around the edge, brightest toward the light
+        float rim = 1.0 - smoothstep(0.0, rimWidth, abs(d));
+        float lightDot = abs(dot(dir, normalize(lightDir))); // mirror: light hits both ends of this axis
+        float highlight = rim * pow(lightDot, 2.0);
+        half4 withRim = mix(refracted, half4(1.0), highlight * rimIntensity);
+
+        half4 outside = background.eval(point);
+        half4 result = mix(outside, withRim, mask);
+
+        // gradient visualization: displacement (dir * ramp) remapped from [-1,1] to [0,1]
+        // as red/green, dimmed background so the field reads clearly against it
+        half4 gradientColor = half4(displacement.x * 0.5 + 0.5, displacement.y * 0.5 + 0.5, 0.0, 1.0);
+        half4 gradientVis = mix(half4(0.05, 0.05, 0.05, 1.0), gradientColor, mask);
+
+        return mix(result, gradientVis, showGradient);
+    }
+
 """.trimIndent()
 
 @Language("AGSL")
 val sphereDisplacementShader = """
-    
+
 """.trimIndent()
+
+// fixed, non-configurable defaults for the params we stopped exposing as sliders
+private const val DEFAULT_ABERRATION = 2f
+private const val DEFAULT_RIM_WIDTH = 10f
+private const val DEFAULT_RIM_INTENSITY = 0.8f
+private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
 
 @Preview
 @Composable
 fun CircleDisplacementMap() {
+    val shader = remember { RuntimeShader(circleDisplacementShader) }
+    var gradientEps by remember { mutableFloatStateOf(10f) }
+
+    DisplacementMapPreview(
+        shader = shader,
+        setExtraUniforms = { setFloatUniform("gradientEps", gradientEps) },
+        extraSliders = { ParamSlider("Gradient Eps", gradientEps, 1f..40f) { gradientEps = it } }
+    )
+}
+
+@Preview
+@Composable
+fun AnalyticalDisplacementMap() {
+    val shader = remember { RuntimeShader(analyticalDisplacementShader) }
+    DisplacementMapPreview(shader = shader)
+}
+
+/**
+ * Shared preview scaffold: image + shader on top, sliders for the shape/refraction params
+ * that both the FD and analytic gradient shaders have in common on the bottom.
+ * [setExtraUniforms] runs inside the draw-time uniform block for shader-specific uniforms
+ * (e.g. the FD shader's gradientEps); [extraSliders] renders their corresponding controls.
+ */
+@Composable
+private fun DisplacementMapPreview(
+    shader: RuntimeShader,
+    setExtraUniforms: RuntimeShader.() -> Unit = {},
+    extraSliders: @Composable () -> Unit = {}
+) {
     LiquidKlassTheme {
-        val shader = remember { RuntimeShader(circleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         var radiusDp by remember { mutableFloatStateOf(40f) }
         var boxWidthDp by remember { mutableFloatStateOf(100f) }
         var boxHeightDp by remember { mutableFloatStateOf(60f) }
         var strength by remember { mutableFloatStateOf(60f) }
-        var aberration by remember { mutableFloatStateOf(2f) }
-        var rimWidth by remember { mutableFloatStateOf(10f) }
-        var rimIntensity by remember { mutableFloatStateOf(0.8f) }
-        var lightAngleDeg by remember { mutableFloatStateOf(225f) }
         var rampPower by remember { mutableFloatStateOf(3f) }
         var showGradient by remember { mutableStateOf(false) }
-        var gradientEps by remember { mutableFloatStateOf(10f) }
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Top half: image + shader.
@@ -173,7 +272,7 @@ fun CircleDisplacementMap() {
                             } else {
                                 center
                             }
-                            val angleRad = Math.toRadians(lightAngleDeg.toDouble())
+                            val angleRad = Math.toRadians(DEFAULT_LIGHT_ANGLE_DEG.toDouble())
                             with(shader) {
                                 setFloatUniform("resolution", size.width, size.height)
                                 setFloatUniform("center", c.x, c.y)
@@ -184,9 +283,9 @@ fun CircleDisplacementMap() {
                                 )
                                 setFloatUniform("radius", radiusDp.dp.toPx())
                                 setFloatUniform("strength", strength)
-                                setFloatUniform("aberration", aberration)
-                                setFloatUniform("rimWidth", rimWidth)
-                                setFloatUniform("rimIntensity", rimIntensity)
+                                setFloatUniform("aberration", DEFAULT_ABERRATION)
+                                setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
+                                setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
                                 setFloatUniform(
                                     "lightDir",
                                     cos(angleRad).toFloat(),
@@ -194,7 +293,7 @@ fun CircleDisplacementMap() {
                                 )
                                 setFloatUniform("rampPower", rampPower)
                                 setFloatUniform("showGradient", if (showGradient) 1f else 0f)
-                                setFloatUniform("gradientEps", gradientEps)
+                                setExtraUniforms()
                             }
 
                             renderEffect = RenderEffect.createRuntimeShaderEffect(
@@ -221,12 +320,8 @@ fun CircleDisplacementMap() {
                 ParamSlider("Box Width", boxWidthDp, 20f..400f) { boxWidthDp = it }
                 ParamSlider("Box Height", boxHeightDp, 20f..400f) { boxHeightDp = it }
                 ParamSlider("Strength", strength, 0f..150f) { strength = it }
-                ParamSlider("Aberration", aberration, 0f..15f) { aberration = it }
-                ParamSlider("Rim Width", rimWidth, 0f..30f) { rimWidth = it }
-                ParamSlider("Rim Intensity", rimIntensity, 0f..1f, step = 0.05f) { rimIntensity = it }
-                ParamSlider("Light Angle", lightAngleDeg, 0f..360f) { lightAngleDeg = it }
                 ParamSlider("Ramp Power", rampPower, 1f..6f) { rampPower = it }
-                ParamSlider("Gradient Eps", gradientEps, 1f..40f) { gradientEps = it }
+                extraSliders()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         modifier = Modifier.weight(1f),
