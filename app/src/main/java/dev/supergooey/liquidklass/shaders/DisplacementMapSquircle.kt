@@ -5,6 +5,7 @@ import android.graphics.RuntimeShader
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -19,8 +20,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 import kotlin.math.cos
@@ -126,7 +130,32 @@ private val PressSpring = spring<Float>(
 
 @Preview
 @Composable
-fun SquircleDisplacementMap() {
+fun SquircleDisplacementMapImage() {
+    SquircleDisplacementScaffold { modifier ->
+        Image(
+            modifier = modifier,
+            painter = painterResource(R.drawable.bikes),
+            contentScale = ContentScale.Crop,
+            contentDescription = "Hi"
+        )
+    }
+}
+
+@Preview
+@Composable
+fun SquircleDisplacementMapCheckerBoard() {
+    SquircleDisplacementScaffold { modifier ->
+        CheckerBoard(modifier = modifier)
+    }
+}
+
+/**
+ * Shared shape-animation + shader wiring for the squircle displacement preview. [content]
+ * receives the fully-built modifier (gestures + shader render effect) and decides what to
+ * actually draw underneath it — an [Image] or the [CheckerBoard] test pattern.
+ */
+@Composable
+private fun SquircleDisplacementScaffold(content: @Composable (Modifier) -> Unit) {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(squircleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
@@ -151,8 +180,8 @@ fun SquircleDisplacementMap() {
         var showGradient by remember { mutableStateOf(false) }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CheckerBoard(
-                modifier = Modifier
+            content(
+                Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         val fallback = Offset(size.width * 0.5f, size.height * 0.5f)
