@@ -4,21 +4,9 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -125,16 +113,20 @@ val circleDisplacementShader = """
 
 """.trimIndent()
 
-// same shader as circleDisplacementShader, but the gradient comes from an exact analytic
-// derivation of the rounded-box SDF instead of a finite-difference approximation — no eps,
-// one fewer SDF eval, but the medial-axis seam is a hard discontinuity instead of smoothed.
+// completely different tack from the SDF-based shaders above: instead of "nearest edge"
+// distance (which is a Voronoi diagram with a hard medial-axis seam by construction), this
+// uses a superellipse/squircle implicit field f(p) = |x/a|^n + |y/b|^n. Its gradient is a
+// closed-form algebraic expression with no min/max/branches anywhere, so there's no seam to
+// smooth over in the first place, and it stays seamless at any sheet size. squircleN trades
+// off roundedness (2 = ellipse) for boxiness (higher = flatter faces, sharper corners); there's
+// no explicit corner-radius uniform since the corner shape falls out of n rather than a radius.
 @Language("AGSL")
-val analyticalDisplacementShader = """
+val squircleDisplacementShader = """
     uniform shader background;
     uniform float2 resolution;
     uniform float2 center;
     uniform float2 halfSize;
-    uniform float radius;
+    uniform float squircleN;
     uniform float strength;
     uniform float aberration;
     uniform float rimWidth;
@@ -143,38 +135,42 @@ val analyticalDisplacementShader = """
     uniform float rampPower;
     uniform float showGradient;
 
-    // analytic signed distance + outward gradient for a rounded box, centered at origin.
-    // reduces exactly to a circle's SDF/gradient when halfSize.x == halfSize.y == radius.
-    float3 sdgRoundBox(float2 p, float2 halfSize, float radius) {
-        float2 b = halfSize - radius;
-        float2 w = abs(p) - b;
-        float2 s = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
-        float g = max(w.x, w.y);
-        float2 q = max(w, 0.0);
-        float l = length(q);
-        float2 dir = s * (g > 0.0 ? q / max(l, 0.0001) : (w.x > w.y ? float2(1.0, 0.0) : float2(0.0, 1.0)));
-        float d = (g > 0.0 ? l : g) - radius;
-        return float3(dir, d);
+    // r: 0 at center, 1 at the squircle boundary, growing smoothly and monotonically outward.
+    // gradR: analytic gradient of r, already the outward normal direction (unnormalized).
+    float4 sdgSquircle(float2 p, float2 halfSize, float n) {
+        float2 a = halfSize;
+        float2 ax = abs(p) / a;
+        float2 signP = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
+
+        float r = pow(ax.x, n) + pow(ax.y, n);
+        float2 gradR = n * float2(pow(ax.x, n - 1.0), pow(ax.y, n - 1.0)) * signP / a;
+
+        float2 dir = gradR / max(length(gradR), 0.0001);
+        // first-order distance estimate from the implicit surface (r == 1), so mask/rim AA
+        // stays a consistent pixel width regardless of halfSize or n
+        float d = (r - 1.0) / max(length(gradR), 0.0001);
+        return float4(dir, d, r);
     }
 
     half4 main(float2 point) {
-        float clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
-        float3 sdg = sdgRoundBox(point - center, halfSize, clampedRadius);
+        float2 p = point - center;
+
+        float4 sdg = sdgSquircle(p, halfSize, squircleN);
         float2 dir = sdg.xy; // outward normal, -1..1
-        float d = sdg.z; // signed distance from radius, negative inside
+        float d = sdg.z; // approx signed distance from boundary, negative inside
+        float r = sdg.w; // 0 at center, 1 at boundary
 
         float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
 
-        float refractionLength = min(halfSize.x, halfSize.y);
-        float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
+        float t = clamp(r, 0.0, 1.0); // 0 at center, 1 at edge — smooth by construction, no seam
         float ramp = pow(t, rampPower); // change ramp curve via uniform
         float2 displacement = dir * ramp; // apply that ramp to dir
 
         float2 offset = displacement * strength;
-        float r = background.eval(point - offset - dir * aberration).r;
+        float rr = background.eval(point - offset - dir * aberration).r;
         float g = background.eval(point - offset).g;
         float b = background.eval(point - offset + dir * aberration).b;
-        half4 refracted = half4(r, g, b, 1.0);
+        half4 refracted = half4(rr, g, b, 1.0);
 
         // rim highlight: thin specular band around the edge, brightest toward the light
         float rim = 1.0 - smoothstep(0.0, rimWidth, abs(d));
@@ -201,7 +197,7 @@ val sphereDisplacementShader = """
 """.trimIndent()
 
 // fixed, non-configurable defaults for the params we stopped exposing as sliders
-private const val DEFAULT_ABERRATION = 2f
+private const val DEFAULT_ABERRATION = 4f
 private const val DEFAULT_RIM_WIDTH = 10f
 private const val DEFAULT_RIM_INTENSITY = 0.8f
 private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
@@ -209,149 +205,139 @@ private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
 @Preview
 @Composable
 fun CircleDisplacementMap() {
-    val shader = remember { RuntimeShader(circleDisplacementShader) }
-    var gradientEps by remember { mutableFloatStateOf(10f) }
-
-    DisplacementMapPreview(
-        shader = shader,
-        setExtraUniforms = { setFloatUniform("gradientEps", gradientEps) },
-        extraSliders = { ParamSlider("Gradient Eps", gradientEps, 1f..40f) { gradientEps = it } }
-    )
-}
-
-@Preview
-@Composable
-fun AnalyticalDisplacementMap() {
-    val shader = remember { RuntimeShader(analyticalDisplacementShader) }
-    DisplacementMapPreview(shader = shader)
-}
-
-/**
- * Shared preview scaffold: image + shader on top, sliders for the shape/refraction params
- * that both the FD and analytic gradient shaders have in common on the bottom.
- * [setExtraUniforms] runs inside the draw-time uniform block for shader-specific uniforms
- * (e.g. the FD shader's gradientEps); [extraSliders] renders their corresponding controls.
- */
-@Composable
-private fun DisplacementMapPreview(
-    shader: RuntimeShader,
-    setExtraUniforms: RuntimeShader.() -> Unit = {},
-    extraSliders: @Composable () -> Unit = {}
-) {
     LiquidKlassTheme {
+        val shader = remember { RuntimeShader(circleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         var radiusDp by remember { mutableFloatStateOf(40f) }
-        var boxWidthDp by remember { mutableFloatStateOf(100f) }
-        var boxHeightDp by remember { mutableFloatStateOf(60f) }
-        var strength by remember { mutableFloatStateOf(60f) }
-        var rampPower by remember { mutableFloatStateOf(3f) }
+        var boxWidthDp by remember { mutableFloatStateOf(80f) }
+        var boxHeightDp by remember { mutableFloatStateOf(80f) }
+        var strength by remember { mutableFloatStateOf(100f) }
+        var rampPower by remember { mutableFloatStateOf(4f) }
+        var gradientEps by remember { mutableFloatStateOf(10f) }
         var showGradient by remember { mutableStateOf(false) }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Top half: image + shader.
-            Box(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Image(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            val fallback = Offset(size.width * 0.5f, size.height * 0.5f)
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val base = if (center == Offset.Unspecified) fallback else center
-                                center = base + dragAmount
-                            }
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        val fallback = Offset(size.width * 0.5f, size.height * 0.5f)
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val base = if (center == Offset.Unspecified) fallback else center
+                            center = base + dragAmount
                         }
-                        .graphicsLayer {
-                            val c = if (center == Offset.Unspecified) {
-                                Offset(size.width * 0.5f, size.height * 0.5f)
-                            } else {
-                                center
-                            }
-                            val angleRad = Math.toRadians(DEFAULT_LIGHT_ANGLE_DEG.toDouble())
-                            with(shader) {
-                                setFloatUniform("resolution", size.width, size.height)
-                                setFloatUniform("center", c.x, c.y)
-                                setFloatUniform(
-                                    "halfSize",
-                                    boxWidthDp.dp.toPx() / 2,
-                                    boxHeightDp.dp.toPx() / 2
-                                )
-                                setFloatUniform("radius", radiusDp.dp.toPx())
-                                setFloatUniform("strength", strength)
-                                setFloatUniform("aberration", DEFAULT_ABERRATION)
-                                setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
-                                setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
-                                setFloatUniform(
-                                    "lightDir",
-                                    cos(angleRad).toFloat(),
-                                    sin(angleRad).toFloat()
-                                )
-                                setFloatUniform("rampPower", rampPower)
-                                setFloatUniform("showGradient", if (showGradient) 1f else 0f)
-                                setExtraUniforms()
-                            }
+                    }
+                    .graphicsLayer {
+                        val c = if (center == Offset.Unspecified) {
+                            Offset(size.width * 0.5f, size.height * 0.5f)
+                        } else {
+                            center
+                        }
+                        val angleRad = Math.toRadians(DEFAULT_LIGHT_ANGLE_DEG.toDouble())
+                        with(shader) {
+                            setFloatUniform("resolution", size.width, size.height)
+                            setFloatUniform("center", c.x, c.y)
+                            setFloatUniform(
+                                "halfSize",
+                                boxWidthDp.dp.toPx() / 2,
+                                boxHeightDp.dp.toPx() / 2
+                            )
+                            setFloatUniform("radius", radiusDp.dp.toPx())
+                            setFloatUniform("strength", strength)
+                            setFloatUniform("aberration", DEFAULT_ABERRATION)
+                            setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
+                            setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
+                            setFloatUniform(
+                                "lightDir",
+                                cos(angleRad).toFloat(),
+                                sin(angleRad).toFloat()
+                            )
+                            setFloatUniform("rampPower", rampPower)
+                            setFloatUniform("showGradient", if (showGradient) 1f else 0f)
+                            setFloatUniform("gradientEps", gradientEps)
+                        }
 
-                            renderEffect = RenderEffect.createRuntimeShaderEffect(
-                                shader,
-                                "background"
-                            ).asComposeRenderEffect()
-                        },
-                    painter = painterResource(R.drawable.bikes),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = "Hi"
-                )
-            }
-
-            // Bottom half: slider controls.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(color = MaterialTheme.colorScheme.background)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                ParamSlider("Radius", radiusDp, 0f..150f) { radiusDp = it }
-                ParamSlider("Box Width", boxWidthDp, 20f..400f) { boxWidthDp = it }
-                ParamSlider("Box Height", boxHeightDp, 20f..400f) { boxHeightDp = it }
-                ParamSlider("Strength", strength, 0f..150f) { strength = it }
-                ParamSlider("Ramp Power", rampPower, 1f..6f) { rampPower = it }
-                extraSliders()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onBackground,
-                        text = "Show Gradient"
-                    )
-                    Switch(checked = showGradient, onCheckedChange = { showGradient = it })
-                }
-            }
+                        renderEffect = RenderEffect.createRuntimeShaderEffect(
+                            shader,
+                            "background"
+                        ).asComposeRenderEffect()
+                    },
+                painter = painterResource(R.drawable.bikes),
+                contentScale = ContentScale.Crop,
+                contentDescription = "Hi"
+            )
         }
     }
 }
 
+@Preview
 @Composable
-private fun ParamSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    step: Float = 1f,
-    onValueChange: (Float) -> Unit
-) {
-    val steps = (((range.endInclusive - range.start) / step).roundToInt() - 1).coerceAtLeast(0)
-    val format = if (step >= 1f) "%.0f" else "%.2f"
-    Text(color = MaterialTheme.colorScheme.onBackground, text = "$label: ${format.format(value)}")
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = range,
-        steps = steps
-    )
+fun SquircleDisplacementMap() {
+    LiquidKlassTheme {
+        val shader = remember { RuntimeShader(squircleDisplacementShader) }
+        var center by remember { mutableStateOf(Offset.Unspecified) }
+
+        var boxWidthDp by remember { mutableFloatStateOf(80f) }
+        var boxHeightDp by remember { mutableFloatStateOf(80f) }
+        var squircleN by remember { mutableFloatStateOf(2f) }
+        var strength by remember { mutableFloatStateOf(100f) }
+        var rampPower by remember { mutableFloatStateOf(2f) }
+        var showGradient by remember { mutableStateOf(false) }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        val fallback = Offset(size.width * 0.5f, size.height * 0.5f)
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val base = if (center == Offset.Unspecified) fallback else center
+                            center = base + dragAmount
+                        }
+                    }
+                    .graphicsLayer {
+                        val c = if (center == Offset.Unspecified) {
+                            Offset(size.width * 0.5f, size.height * 0.5f)
+                        } else {
+                            center
+                        }
+                        val angleRad = Math.toRadians(DEFAULT_LIGHT_ANGLE_DEG.toDouble())
+                        with(shader) {
+                            setFloatUniform("resolution", size.width, size.height)
+                            setFloatUniform("center", c.x, c.y)
+                            setFloatUniform(
+                                "halfSize",
+                                boxWidthDp.dp.toPx() / 2,
+                                boxHeightDp.dp.toPx() / 2
+                            )
+                            setFloatUniform("squircleN", squircleN)
+                            setFloatUniform("strength", strength)
+                            setFloatUniform("aberration", DEFAULT_ABERRATION)
+                            setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
+                            setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
+                            setFloatUniform(
+                                "lightDir",
+                                cos(angleRad).toFloat(),
+                                sin(angleRad).toFloat()
+                            )
+                            setFloatUniform("rampPower", rampPower)
+                            setFloatUniform("showGradient", if (showGradient) 1f else 0f)
+                        }
+
+                        renderEffect = RenderEffect.createRuntimeShaderEffect(
+                            shader,
+                            "background"
+                        ).asComposeRenderEffect()
+                    },
+                painter = painterResource(R.drawable.bikes),
+                contentScale = ContentScale.Crop,
+                contentDescription = "Hi"
+            )
+        }
+    }
 }
 
 @Composable
