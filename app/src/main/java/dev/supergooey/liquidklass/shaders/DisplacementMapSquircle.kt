@@ -2,47 +2,45 @@ package dev.supergooey.liquidklass.shaders
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/**
- * We are gonna use this space to practice what we learned
- */
-
-
+// completely different tack from the SDF-based shaders in DisplacementMapPractice.kt: instead
+// of "nearest edge" distance (which is a Voronoi diagram with a hard medial-axis seam by
+// construction), this uses a superellipse/squircle implicit field f(p) = |x/a|^n + |y/b|^n.
+// Its gradient is a closed-form algebraic expression with no min/max/branches anywhere, so
+// there's no seam to smooth over in the first place, and it stays seamless at any sheet size.
+// squircleN trades off roundedness (2 = ellipse) for boxiness (higher = flatter faces, sharper
+// corners); there's no explicit corner-radius uniform since the corner shape falls out of n
+// rather than a radius.
 @Language("AGSL")
-val circleDisplacementShader = """
+val squircleDisplacementShader = """
     uniform shader background;
     uniform float2 resolution;
     uniform float2 center;
     uniform float2 halfSize;
-    uniform float radius;
+    uniform float squircleN;
     uniform float strength;
     uniform float aberration;
     uniform float rimWidth;
@@ -50,49 +48,43 @@ val circleDisplacementShader = """
     uniform float2 lightDir;
     uniform float rampPower;
     uniform float showGradient;
-    uniform float gradientEps;
 
-    // scalar-only distance, no hand-derived direction branches — reusable by the FD gradient below
-    float sdRect(float2 point, float2 center, float2 halfSize, float radius) {
-        float2 p = point - center;
-        float2 b = halfSize - radius;
-        float2 w = abs(p) - b;
-        float2 q = max(w, 0.0);
-        float g = max(w.x, w.y);
-        return (g > 0.0 ? length(q) : g) - radius;
-    }
+    // r: 0 at center, 1 at the squircle boundary, growing smoothly and monotonically outward.
+    // gradR: analytic gradient of r, already the outward normal direction (unnormalized).
+    float4 sdgSquircle(float2 p, float2 halfSize, float n) {
+        float2 a = halfSize;
+        float2 ax = abs(p) / a;
+        float2 signP = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
 
-    // numerical gradient via central differences; eps also acts as a smoothing radius
-    // across the medial-axis seam where the analytic direction field is discontinuous
-    float3 sdgRectFD(float2 point, float2 center, float2 halfSize, float radius, float eps) {
-        float d = sdRect(point, center, halfSize, radius);
-        float dx = sdRect(point + float2(eps, 0.0), center, halfSize, radius)
-                  - sdRect(point - float2(eps, 0.0), center, halfSize, radius);
-        float dy = sdRect(point + float2(0.0, eps), center, halfSize, radius)
-                  - sdRect(point - float2(0.0, eps), center, halfSize, radius);
-        float2 grad = float2(dx, dy) / (2.0 * eps);
-        float2 dir = grad / max(length(grad), 0.0001);
-        return float3(dir, d);
+        float r = pow(ax.x, n) + pow(ax.y, n);
+        float2 gradR = n * float2(pow(ax.x, n - 1.0), pow(ax.y, n - 1.0)) * signP / a;
+
+        float2 dir = gradR / max(length(gradR), 0.0001);
+        // first-order distance estimate from the implicit surface (r == 1), so mask/rim AA
+        // stays a consistent pixel width regardless of halfSize or n
+        float d = (r - 1.0) / max(length(gradR), 0.0001);
+        return float4(dir, d, r);
     }
 
     half4 main(float2 point) {
-        float clampedRadius = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
-        float3 sdg = sdgRectFD(point, center, halfSize, clampedRadius, gradientEps);
+        float2 p = point - center;
+
+        float4 sdg = sdgSquircle(p, halfSize, squircleN);
         float2 dir = sdg.xy; // outward normal, -1..1
-        float d = sdg.z; // signed distance from radius, negative inside
+        float d = sdg.z; // approx signed distance from boundary, negative inside
+        float r = sdg.w; // 0 at center, 1 at boundary
 
         float mask = 1.0 - smoothstep(-1.0, 1.0, d); // ~2px AA edge, 1 inside
 
-        float refractionLength = min(halfSize.x, halfSize.y);
-        float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
+        float t = clamp(r, 0.0, 1.0); // 0 at center, 1 at edge — smooth by construction, no seam
         float ramp = pow(t, rampPower); // change ramp curve via uniform
         float2 displacement = dir * ramp; // apply that ramp to dir
 
         float2 offset = displacement * strength;
-        float r = background.eval(point - offset - dir * aberration).r;
+        float rr = background.eval(point - offset - dir * aberration).r;
         float g = background.eval(point - offset).g;
         float b = background.eval(point - offset + dir * aberration).b;
-        half4 refracted = half4(r, g, b, 1.0);
+        half4 refracted = half4(rr, g, b, 1.0);
 
         // rim highlight: thin specular band around the edge, brightest toward the light
         float rim = 1.0 - smoothstep(0.0, rimWidth, abs(d));
@@ -113,34 +105,53 @@ val circleDisplacementShader = """
 
 """.trimIndent()
 
-@Language("AGSL")
-val sphereDisplacementShader = """
-
-""".trimIndent()
-
-// fixed, non-configurable defaults for the params we stopped exposing as sliders
-private const val DEFAULT_ABERRATION = 6f
+// fixed, non-configurable defaults for the params we aren't exposing as sliders
+private const val DEFAULT_ABERRATION = 2f
 private const val DEFAULT_RIM_WIDTH = 10f
 private const val DEFAULT_RIM_INTENSITY = 0.8f
 private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
 
+// shape state at rest (small circle) vs. pressed (large sheet-sized squircle)
+private const val CIRCLE_BOX_DP = 100f
+private const val CIRCLE_STRENGTH = 100f
+private const val CIRCLE_RAMP_POWER = 2f
+
+private const val SQUIRCLE_WIDTH_DP = 200f
+private const val SQUIRCLE_HEIGHT_DP = 200f
+
+private val PressSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessMediumLow
+)
+
 @Preview
 @Composable
-fun CircleDisplacementMap() {
+fun SquircleDisplacementMap() {
     LiquidKlassTheme {
-        val shader = remember { RuntimeShader(circleDisplacementShader) }
+        val shader = remember { RuntimeShader(squircleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
+        var pressed by remember { mutableStateOf(false) }
 
-        var radiusDp by remember { mutableFloatStateOf(40f) }
-        var boxWidthDp by remember { mutableFloatStateOf(80f) }
-        var boxHeightDp by remember { mutableFloatStateOf(80f) }
-        var strength by remember { mutableFloatStateOf(100f) }
-        var rampPower by remember { mutableFloatStateOf(4f) }
-        var gradientEps by remember { mutableFloatStateOf(10f) }
+        val boxWidthDp by animateFloatAsState(
+            targetValue = if (pressed) SQUIRCLE_WIDTH_DP else CIRCLE_BOX_DP,
+            animationSpec = PressSpring,
+            label = "boxWidth"
+        )
+        val boxHeightDp by animateFloatAsState(
+            targetValue = if (pressed) SQUIRCLE_HEIGHT_DP else CIRCLE_BOX_DP,
+            animationSpec = PressSpring,
+            label = "boxHeight"
+        )
+        val squircleN by animateFloatAsState(
+            targetValue = if (pressed) 4f else 2f,
+            animationSpec = PressSpring,
+            label = "squircleN"
+        )
+
         var showGradient by remember { mutableStateOf(false) }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            Image(
+            CheckerBoard(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
@@ -150,6 +161,15 @@ fun CircleDisplacementMap() {
                             val base = if (center == Offset.Unspecified) fallback else center
                             center = base + dragAmount
                         }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                pressed = true
+                                tryAwaitRelease()
+                                pressed = false
+                            }
+                        )
                     }
                     .graphicsLayer {
                         val c = if (center == Offset.Unspecified) {
@@ -166,8 +186,8 @@ fun CircleDisplacementMap() {
                                 boxWidthDp.dp.toPx() / 2,
                                 boxHeightDp.dp.toPx() / 2
                             )
-                            setFloatUniform("radius", radiusDp.dp.toPx())
-                            setFloatUniform("strength", strength)
+                            setFloatUniform("squircleN", squircleN)
+                            setFloatUniform("strength", CIRCLE_STRENGTH)
                             setFloatUniform("aberration", DEFAULT_ABERRATION)
                             setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
                             setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
@@ -176,36 +196,16 @@ fun CircleDisplacementMap() {
                                 cos(angleRad).toFloat(),
                                 sin(angleRad).toFloat()
                             )
-                            setFloatUniform("rampPower", rampPower)
+                            setFloatUniform("rampPower", CIRCLE_RAMP_POWER)
                             setFloatUniform("showGradient", if (showGradient) 1f else 0f)
-                            setFloatUniform("gradientEps", gradientEps)
                         }
 
                         renderEffect = RenderEffect.createRuntimeShaderEffect(
                             shader,
                             "background"
                         ).asComposeRenderEffect()
-                    },
-                painter = painterResource(R.drawable.bikes),
-                contentScale = ContentScale.Crop,
-                contentDescription = "Hi"
+                    }
             )
-        }
-    }
-}
-
-@Composable
-fun CheckerBoard(modifier: Modifier) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val cellSize = size.width / 11
-        val rows = (size.height / cellSize).roundToInt()
-        val cols = (size.width / cellSize).roundToInt()
-
-        for (row in 0 until rows) {
-            for (col in 0 until cols) {
-                val color = if ((row + col) % 2 == 0) Color.Black else Color.White
-                drawRect(color = color, topLeft = Offset(x = col * cellSize, y = row * cellSize), size = Size(cellSize, cellSize))
-            }
         }
     }
 }
