@@ -41,17 +41,18 @@ import kotlin.math.sin
 @Language("AGSL")
 val squircleDisplacementShader = """
     uniform shader background;
-    uniform float2 resolution;
+    
     uniform float2 center;
     uniform float2 halfSize;
     uniform float squircleN;
+    
     uniform float strength;
     uniform float aberration;
-    uniform float rimWidth;
-    uniform float rimIntensity;
     uniform float2 lightDir;
     uniform float rampPower;
-    uniform float showGradient;
+
+    const float rimWidth = 10.0;
+    const float rimIntensity = 0.8;
 
     // r: 0 at center, 1 at the squircle boundary, growing smoothly and monotonically outward.
     // gradR: analytic gradient of r, already the outward normal direction (unnormalized).
@@ -99,33 +100,34 @@ val squircleDisplacementShader = """
         half4 outside = background.eval(point);
         half4 result = mix(outside, withRim, mask);
 
-        // gradient visualization: displacement (dir * ramp) remapped from [-1,1] to [0,1]
-        // as red/green, dimmed background so the field reads clearly against it
-        half4 gradientColor = half4(displacement.x * 0.5 + 0.5, displacement.y * 0.5 + 0.5, 0.0, 1.0);
-        half4 gradientVis = mix(half4(0.05, 0.05, 0.05, 1.0), gradientColor, mask);
-
-        return mix(result, gradientVis, showGradient);
+        return result;
     }
 
 """.trimIndent()
 
-// fixed, non-configurable defaults for the params we aren't exposing as sliders
-private const val DEFAULT_ABERRATION = 2f
-private const val DEFAULT_RIM_WIDTH = 10f
-private const val DEFAULT_RIM_INTENSITY = 0.8f
-private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
-
-// shape state at rest (small circle) vs. pressed (large sheet-sized squircle)
-private const val CIRCLE_BOX_DP = 100f
-private const val CIRCLE_STRENGTH = 100f
-private const val CIRCLE_RAMP_POWER = 2f
-
-private const val SQUIRCLE_WIDTH_DP = 200f
-private const val SQUIRCLE_HEIGHT_DP = 200f
+// shape state at rest is always a small circle (squircleN = 2); [SquircleShaderConfig] only
+// configures the pressed/expanded squircle shape and shader params
+private const val CIRCLE_BOX_DP = 80f
+private const val CIRCLE_REST_N = 2f
 
 private val PressSpring = spring<Float>(
     dampingRatio = Spring.DampingRatioLowBouncy,
     stiffness = Spring.StiffnessMediumLow
+)
+
+/**
+ * Configuration surface for [squircleDisplacementShader], exposed for callers who embed this
+ * shader material elsewhere. Everything else (rim highlight, rest-state circle) is a fixed
+ * internal default.
+ */
+data class SquircleShaderConfig(
+    val squircleWidthDp: Float = 120f,
+    val squircleHeightDp: Float = 120f,
+    val squircleN: Float = 4f,
+    val lightAngleDeg: Float = 45f,
+    val strength: Float = 80f,
+    val aberration: Float = 2f,
+    val rampPower: Float = 4f,
 )
 
 @Preview
@@ -155,29 +157,30 @@ fun SquircleDisplacementMapCheckerBoard() {
  * actually draw underneath it — an [Image] or the [CheckerBoard] test pattern.
  */
 @Composable
-private fun SquircleDisplacementScaffold(content: @Composable (Modifier) -> Unit) {
+private fun SquircleDisplacementScaffold(
+    config: SquircleShaderConfig = SquircleShaderConfig(),
+    content: @Composable (Modifier) -> Unit
+) {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(squircleDisplacementShader) }
         var center by remember { mutableStateOf(Offset.Unspecified) }
         var pressed by remember { mutableStateOf(false) }
 
         val boxWidthDp by animateFloatAsState(
-            targetValue = if (pressed) SQUIRCLE_WIDTH_DP else CIRCLE_BOX_DP,
+            targetValue = if (pressed) config.squircleWidthDp else CIRCLE_BOX_DP,
             animationSpec = PressSpring,
             label = "boxWidth"
         )
         val boxHeightDp by animateFloatAsState(
-            targetValue = if (pressed) SQUIRCLE_HEIGHT_DP else CIRCLE_BOX_DP,
+            targetValue = if (pressed) config.squircleHeightDp else CIRCLE_BOX_DP,
             animationSpec = PressSpring,
             label = "boxHeight"
         )
         val squircleN by animateFloatAsState(
-            targetValue = if (pressed) 4f else 2f,
+            targetValue = if (pressed) config.squircleN else CIRCLE_REST_N,
             animationSpec = PressSpring,
             label = "squircleN"
         )
-
-        var showGradient by remember { mutableStateOf(false) }
 
         Box(modifier = Modifier.fillMaxSize()) {
             content(
@@ -206,9 +209,8 @@ private fun SquircleDisplacementScaffold(content: @Composable (Modifier) -> Unit
                         } else {
                             center
                         }
-                        val angleRad = Math.toRadians(DEFAULT_LIGHT_ANGLE_DEG.toDouble())
+                        val angleRad = Math.toRadians(config.lightAngleDeg.toDouble())
                         with(shader) {
-                            setFloatUniform("resolution", size.width, size.height)
                             setFloatUniform("center", c.x, c.y)
                             setFloatUniform(
                                 "halfSize",
@@ -216,17 +218,14 @@ private fun SquircleDisplacementScaffold(content: @Composable (Modifier) -> Unit
                                 boxHeightDp.dp.toPx() / 2
                             )
                             setFloatUniform("squircleN", squircleN)
-                            setFloatUniform("strength", CIRCLE_STRENGTH)
-                            setFloatUniform("aberration", DEFAULT_ABERRATION)
-                            setFloatUniform("rimWidth", DEFAULT_RIM_WIDTH)
-                            setFloatUniform("rimIntensity", DEFAULT_RIM_INTENSITY)
+                            setFloatUniform("strength", config.strength)
+                            setFloatUniform("aberration", config.aberration)
                             setFloatUniform(
                                 "lightDir",
                                 cos(angleRad).toFloat(),
                                 sin(angleRad).toFloat()
                             )
-                            setFloatUniform("rampPower", CIRCLE_RAMP_POWER)
-                            setFloatUniform("showGradient", if (showGradient) 1f else 0f)
+                            setFloatUniform("rampPower", config.rampPower)
                         }
 
                         renderEffect = RenderEffect.createRuntimeShaderEffect(
