@@ -27,8 +27,6 @@ import androidx.compose.ui.unit.dp
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
-import kotlin.math.cos
-import kotlin.math.sin
 
 // completely different tack from the SDF-based shaders in DisplacementMapPractice.kt: instead
 // of "nearest edge" distance (which is a Voronoi diagram with a hard medial-axis seam by
@@ -43,16 +41,15 @@ val squircleDisplacementShader = """
     uniform shader background;
     
     uniform float2 center;
-    uniform float2 halfSize;
+    uniform float2 halfSize;    
     uniform float squircleN;
-    
     uniform float strength;
-    uniform float aberration;
-    uniform float2 lightDir;
     uniform float rampPower;
 
     const float rimWidth = 10.0;
     const float rimIntensity = 0.8;
+    const float aberration = 2.0;
+    const float2 lightDir = float2(0.70710678, 0.70710678); // 45 degrees
 
     // r: 0 at center, 1 at the squircle boundary, growing smoothly and monotonically outward.
     // gradR: analytic gradient of r, already the outward normal direction (unnormalized).
@@ -124,9 +121,7 @@ data class SquircleShaderConfig(
     val squircleWidthDp: Float = 120f,
     val squircleHeightDp: Float = 120f,
     val squircleN: Float = 4f,
-    val lightAngleDeg: Float = 45f,
     val strength: Float = 80f,
-    val aberration: Float = 2f,
     val rampPower: Float = 4f,
 )
 
@@ -209,7 +204,6 @@ private fun SquircleDisplacementScaffold(
                         } else {
                             center
                         }
-                        val angleRad = Math.toRadians(config.lightAngleDeg.toDouble())
                         with(shader) {
                             setFloatUniform("center", c.x, c.y)
                             setFloatUniform(
@@ -219,12 +213,6 @@ private fun SquircleDisplacementScaffold(
                             )
                             setFloatUniform("squircleN", squircleN)
                             setFloatUniform("strength", config.strength)
-                            setFloatUniform("aberration", config.aberration)
-                            setFloatUniform(
-                                "lightDir",
-                                cos(angleRad).toFloat(),
-                                sin(angleRad).toFloat()
-                            )
                             setFloatUniform("rampPower", config.rampPower)
                         }
 
