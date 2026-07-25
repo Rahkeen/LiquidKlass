@@ -45,11 +45,20 @@ val squircleDisplacementShader = """
     uniform float squircleN;
     uniform float strength;
     uniform float rampPower;
+    uniform float shadowOpacity;
 
     const float rimWidth = 10.0;
     const float rimIntensity = 0.8;
     const float aberration = 2.0;
     const float2 lightDir = float2(0.70710678, 0.70710678); // 45 degrees
+
+    // soft drop shadow: same squircle field, shifted along the light axis and blurred, drawn
+    // behind the refracted content so the shape reads as lifted off the background. Offset
+    // follows +lightDir (light from the opposite corner casts the shadow this way) rather than
+    // being independently configurable, so it always stays consistent with the rim highlight.
+    const float shadowDistance = 10.0;
+    const float2 shadowOffset = lightDir * shadowDistance;
+    const float shadowBlur = 24.0;
 
     // r: 0 at center, 1 at the squircle boundary, growing smoothly and monotonically outward.
     // gradR: analytic gradient of r, already the outward normal direction (unnormalized).
@@ -95,7 +104,14 @@ val squircleDisplacementShader = """
         half4 withRim = mix(refracted, half4(1.0), highlight * rimIntensity);
 
         half4 outside = background.eval(point);
-        half4 result = mix(outside, withRim, mask);
+
+        // shadow shape is the squircle field re-evaluated at a shifted point, so it's the same
+        // silhouette translated by shadowOffset; smoothstep over shadowBlur softens its edge
+        float shadowD = sdgSquircle(p - shadowOffset, halfSize, squircleN).z;
+        float shadowMask = 1.0 - smoothstep(-shadowBlur, shadowBlur, shadowD);
+        half4 withShadow = mix(outside, half4(0.0, 0.0, 0.0, 1.0), shadowMask * shadowOpacity * (1.0 - mask));
+
+        half4 result = mix(withShadow, withRim, mask);
 
         return result;
     }
@@ -122,7 +138,8 @@ data class SquircleShaderConfig(
     val squircleHeightDp: Float = 120f,
     val squircleN: Float = 4f,
     val strength: Float = 80f,
-    val rampPower: Float = 4f,
+    val rampPower: Float = 2f,
+    val shadowOpacity: Float = 0.35f,
 )
 
 @Preview
@@ -214,6 +231,7 @@ private fun SquircleDisplacementScaffold(
                             setFloatUniform("squircleN", squircleN)
                             setFloatUniform("strength", config.strength)
                             setFloatUniform("rampPower", config.rampPower)
+                            setFloatUniform("shadowOpacity", config.shadowOpacity)
                         }
 
                         renderEffect = RenderEffect.createRuntimeShaderEffect(
