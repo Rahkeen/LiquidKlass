@@ -2,6 +2,7 @@ package dev.supergooey.liquidklass.shaders
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -162,16 +163,20 @@ val bevelGlassShader = """
         float aa = 1.0;
         float mask = smoothstep(-aa, aa, d);
 
-        half4 outside = background.eval(point);
-
+        // This layer composites over a sharp copy of the same content drawn below, so everything
+        // outside the shape is transparent (premultiplied alpha) and the sharp backdrop shows
+        // through. background.eval here samples the BLURRED copy (blur is chained before us), so
+        // only what's refracted through the glass gets the blur.
+        //
         // drop shadow: re-evaluate the silhouette shifted by shadowOffset (positive inside), soft
         // edge via shadowBlur. Only shows where the shape itself isn't covering (1.0 - mask).
         float shadowD = sdRoundedRect(p - shadowOffset, halfSize, cornerRadius);
         float shadowMask = smoothstep(-shadowBlur, shadowBlur, shadowD);
-        half4 withShadow = mix(outside, half4(0.0, 0.0, 0.0, 1.0), shadowMask * shadowOpacity * (1.0 - mask));
+        float shadowAlpha = shadowMask * shadowOpacity * (1.0 - mask);
+        half4 shadowCol = half4(0.0, 0.0, 0.0, shadowAlpha); // premultiplied black
 
         if (mask <= 0.0) {
-            return withShadow;
+            return shadowCol;
         }
 
         float eps = clamp(bevelWidth / 3.0, 1.0, 4.0);
@@ -194,7 +199,7 @@ val bevelGlassShader = """
         float fresnel = pow(1.0 - clamp(n.z, 0.0, 1.0), fresnelExponent);
         half3 color = mix(refractedColor, half3(1.0), fresnel * rimIntensity);
 
-        return mix(withShadow, half4(color, 1.0), mask);
+        return mix(shadowCol, half4(color, 1.0), mask);
     }
 
 """.trimIndent()
@@ -210,6 +215,7 @@ data class BevelShaderConfig(
     val rimIntensity: Float = 0.8f,
     val aberration: Float = 8f,
     val shadowOpacity: Float = 0.35f,
+    val blurRadiusDp: Float = 4f, // blur applied to the backdrop sampled through the glass
 )
 
 // A rounded rect, a circle, and a pill — all the same primitive, different ratios.
@@ -322,6 +328,19 @@ private fun BevelGlassScaffold(config: BevelShaderConfig) {
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         Box(modifier = Modifier.fillMaxSize()) {
+            // Bottom layer: the sharp backdrop, drawn untouched. Everything outside the glass
+            // shape shows this directly.
+            Image(
+                modifier = Modifier.fillMaxSize(),
+                painter = painterResource(R.drawable.bikes),
+                contentScale = ContentScale.Crop,
+                contentDescription = "Bikes"
+            )
+
+            // Top layer: the same content, but blurred then run through the glass shader. The
+            // shader is transparent outside the shape, so only the glass (+ its shadow) composites
+            // over the sharp layer below. Chaining blur BEFORE the shader means `background.eval`
+            // inside the shader samples the blurred copy — so the refraction picks up the blur.
             Image(
                 modifier = Modifier
                     .fillMaxSize()
@@ -354,10 +373,22 @@ private fun BevelGlassScaffold(config: BevelShaderConfig) {
                             setFloatUniform("aberration", config.aberration)
                             setFloatUniform("shadowOpacity", config.shadowOpacity)
                         }
-                        renderEffect = RenderEffect.createRuntimeShaderEffect(
+                        val glassEffect = RenderEffect.createRuntimeShaderEffect(
                             shader,
                             "background"
-                        ).asComposeRenderEffect()
+                        )
+                        val radiusPx = config.blurRadiusDp.dp.toPx()
+                        renderEffect = if (radiusPx > 0f) {
+                            val blur = RenderEffect.createBlurEffect(
+                                radiusPx,
+                                radiusPx,
+                                Shader.TileMode.CLAMP
+                            )
+                            // inner (blur) runs first, its output feeds the outer (glass) shader
+                            RenderEffect.createChainEffect(glassEffect, blur)
+                        } else {
+                            glassEffect
+                        }.asComposeRenderEffect()
                     },
                 painter = painterResource(R.drawable.bikes),
                 contentScale = ContentScale.Crop,
