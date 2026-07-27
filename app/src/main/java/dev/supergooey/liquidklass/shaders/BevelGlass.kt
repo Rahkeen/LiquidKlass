@@ -189,13 +189,13 @@ data class BevelShaderConfig(
 
 // A rounded rect, a circle, and a pill — all the same primitive, different ratios.
 private val RoundedRectConfig = BevelShaderConfig(
-    halfWidthDp = 130f, halfHeightDp = 80f, cornerRadiusDp = 44f, bevelWidthDp = 20f
+    halfWidthDp = 130f, halfHeightDp = 80f, cornerRadiusDp = 44f, bevelWidthDp = 8f
 )
 private val CircleConfig = BevelShaderConfig(
     halfWidthDp = 40f, halfHeightDp = 40f, cornerRadiusDp = 40f, bevelWidthDp = 8f
 )
 private val PillConfig = BevelShaderConfig(
-    halfWidthDp = 140f, halfHeightDp = 50f, cornerRadiusDp = 50f, bevelWidthDp = 20f
+    halfWidthDp = 140f, halfHeightDp = 50f, cornerRadiusDp = 50f, bevelWidthDp = 8f
 )
 
 @Preview
