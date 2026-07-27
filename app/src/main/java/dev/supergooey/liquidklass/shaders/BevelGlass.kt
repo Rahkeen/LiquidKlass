@@ -208,7 +208,8 @@ data class BevelShaderConfig(
     val refractionStrength: Float = 40f,
     val fresnelExponent: Float = 2f,
     val rimIntensity: Float = 0.8f,
-    val aberration: Float = 8f,
+    val aberration: Float = 8
+            f,
     val shadowOpacity: Float = 0.35f,
 )
 
