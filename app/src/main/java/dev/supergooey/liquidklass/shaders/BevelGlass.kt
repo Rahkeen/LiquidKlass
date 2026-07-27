@@ -115,8 +115,17 @@ val bevelGlassShader = """
     uniform float refractionStrength; // px offset scale; flip sign to invert bend direction
     uniform float fresnelExponent;    // rim falloff curve, e.g. 2.0
     uniform float rimIntensity;       // 0..1, how much the rim mixes toward white
+    uniform float aberration;         // px split between R/B channels along the bend direction
+    uniform float shadowOpacity;      // 0..1 darkness of the drop shadow
 
     const float eta = 1.0 / 1.5; // air -> glass-ish IOR
+
+    // drop shadow geometry: same silhouette translated along the light axis and blurred, drawn
+    // behind the shape so it reads as lifted off the background (mirrors the squircle version).
+    const float2 lightDir = float2(0.70710678, 0.70710678); // 45 degrees
+    const float shadowDistance = 10.0;
+    const float2 shadowOffset = lightDir * shadowDistance;
+    const float shadowBlur = 24.0;
 
     // positive inside, 0 at edge, negative outside
     float sdRoundedRect(float2 p, float2 halfSize, float cornerRadius) {
@@ -154,8 +163,15 @@ val bevelGlassShader = """
         float mask = smoothstep(-aa, aa, d);
 
         half4 outside = background.eval(point);
+
+        // drop shadow: re-evaluate the silhouette shifted by shadowOffset (positive inside), soft
+        // edge via shadowBlur. Only shows where the shape itself isn't covering (1.0 - mask).
+        float shadowD = sdRoundedRect(p - shadowOffset, halfSize, cornerRadius);
+        float shadowMask = smoothstep(-shadowBlur, shadowBlur, shadowD);
+        half4 withShadow = mix(outside, half4(0.0, 0.0, 0.0, 1.0), shadowMask * shadowOpacity * (1.0 - mask));
+
         if (mask <= 0.0) {
-            return outside;
+            return withShadow;
         }
 
         float eps = clamp(bevelWidth / 3.0, 1.0, 4.0);
@@ -164,14 +180,21 @@ val bevelGlassShader = """
         // refract the view ray through the surface; interior normal (0,0,1) -> zero xy offset
         float3 viewDir = float3(0.0, 0.0, 1.0);
         float3 refracted = refract(viewDir, n, eta);
-        float2 refractedUV = point + refracted.xy * refractionStrength;
-        half4 refractedColor = background.eval(refractedUV);
+        float2 baseOffset = refracted.xy * refractionStrength;
+
+        // chromatic aberration: split R/B channels along the bend direction. Scaled by the bend
+        // itself (refracted.xy) so it's zero in the flat interior and grows toward the rim.
+        float2 abOffset = refracted.xy * aberration;
+        half rr = background.eval(point + baseOffset + abOffset).r;
+        half g  = background.eval(point + baseOffset).g;
+        half b  = background.eval(point + baseOffset - abOffset).b;
+        half3 refractedColor = half3(rr, g, b);
 
         // fresnel: 0 in the flat interior, rising toward the true edge as the surface tilts
         float fresnel = pow(1.0 - clamp(n.z, 0.0, 1.0), fresnelExponent);
-        half3 color = mix(refractedColor.rgb, half3(1.0), fresnel * rimIntensity);
+        half3 color = mix(refractedColor, half3(1.0), fresnel * rimIntensity);
 
-        return mix(outside, half4(color, 1.0), mask);
+        return mix(withShadow, half4(color, 1.0), mask);
     }
 
 """.trimIndent()
@@ -185,6 +208,8 @@ data class BevelShaderConfig(
     val refractionStrength: Float = 40f,
     val fresnelExponent: Float = 2f,
     val rimIntensity: Float = 0.8f,
+    val aberration: Float = 8f,
+    val shadowOpacity: Float = 0.35f,
 )
 
 // A rounded rect, a circle, and a pill — all the same primitive, different ratios.
@@ -326,6 +351,8 @@ private fun BevelGlassScaffold(config: BevelShaderConfig) {
                             setFloatUniform("refractionStrength", config.refractionStrength)
                             setFloatUniform("fresnelExponent", config.fresnelExponent)
                             setFloatUniform("rimIntensity", config.rimIntensity)
+                            setFloatUniform("aberration", config.aberration)
+                            setFloatUniform("shadowOpacity", config.shadowOpacity)
                         }
                         renderEffect = RenderEffect.createRuntimeShaderEffect(
                             shader,
