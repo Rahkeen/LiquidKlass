@@ -1,4 +1,4 @@
-package dev.supergooey.liquidklass.shaders
+package dev.supergooey.liquidklass.shaders.two
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -28,7 +28,7 @@ import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 
-// completely different tack from the SDF-based shaders in DisplacementMapPractice.kt: instead
+// completely different tack from the SDF-based shaders in CircleGradientShader.kt: instead
 // of "nearest edge" distance (which is a Voronoi diagram with a hard medial-axis seam by
 // construction), this uses a superellipse/squircle implicit field f(p) = |x/a|^n + |y/b|^n.
 // Its gradient is a closed-form algebraic expression with no min/max/branches anywhere, so

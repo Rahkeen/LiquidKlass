@@ -29,7 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.supergooey.liquidklass.shaders.squircleDisplacementShader
+import dev.supergooey.liquidklass.shaders.two.squircleDisplacementShader
 import dev.supergooey.liquidklass.ui.theme.Green400
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 

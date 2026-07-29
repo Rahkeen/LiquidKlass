@@ -1,7 +1,6 @@
 package dev.supergooey.liquidklass.pipeline
 
 import android.graphics.RenderEffect
-import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.util.Log
 import androidx.compose.foundation.Image
@@ -33,7 +32,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import dev.supergooey.liquidklass.R
-import dev.supergooey.liquidklass.shaders.glassShader
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 
@@ -70,7 +68,6 @@ fun BackdropScene() {
         var backdropOffset by remember { mutableStateOf(Offset.Zero) }
         val thickness = remember { 10.dp }     // play with this — wider = bigger refracting bevel
         val effectLayer = rememberGraphicsLayer()
-        val shader = remember { RuntimeShader(glassShader) }
 
         var glassPosition by remember { mutableStateOf(Offset.Zero)}
 
@@ -98,46 +95,19 @@ fun BackdropScene() {
                 }
                 .align(Alignment.Center)
                 .drawWithCache {
-                    shader.setFloatUniform(
-                        "resolution",
-                        size.width,
-                        size.height
-                    )
-                    shader.setFloatUniform(
-                        "center",
-                        size.width / 2f,
-                        size.height / 2f
-                    )
-                    shader.setFloatUniform(
-                        "radius",
-                        100.dp.toPx()
-                    )
-                    shader.setFloatUniform(
-                        "thickness",
-                        thickness.toPx()
-                    )
                     onDrawWithContent {
                         effectLayer.record {
                             translate(left = -backdropOffset.x, top = -backdropOffset.y) {
                                 drawLayer(backdropLayer)
                             }
                         }
-                        val shaderEffect = RenderEffect.createRuntimeShaderEffect(
-                            shader,
-                            "background"
-                        )
-
                         val blurEffect = RenderEffect.createBlurEffect(
                             32f,
                             32f,
                             Shader.TileMode.CLAMP
                         )
-                        val chain = RenderEffect.createChainEffect(
-                            shaderEffect,
-                            blurEffect,
-                        )
 
-                        effectLayer.renderEffect = shaderEffect.asComposeRenderEffect()
+                        effectLayer.renderEffect = blurEffect.asComposeRenderEffect()
                         drawLayer(effectLayer)
                     }
                 }

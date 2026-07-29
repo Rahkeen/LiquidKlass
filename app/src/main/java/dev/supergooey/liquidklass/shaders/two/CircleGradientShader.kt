@@ -1,4 +1,4 @@
-package dev.supergooey.liquidklass.shaders
+package dev.supergooey.liquidklass.shaders.two
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -113,13 +113,8 @@ val circleDisplacementShader = """
 
 """.trimIndent()
 
-@Language("AGSL")
-val sphereDisplacementShader = """
-
-""".trimIndent()
-
 // fixed, non-configurable defaults for the params we stopped exposing as sliders
-private const val DEFAULT_ABERRATION = 6f
+private const val DEFAULT_ABERRATION = 2f
 private const val DEFAULT_RIM_WIDTH = 10f
 private const val DEFAULT_RIM_INTENSITY = 0.8f
 private const val DEFAULT_LIGHT_ANGLE_DEG = 225f
@@ -132,9 +127,9 @@ fun CircleDisplacementMap() {
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         var radiusDp by remember { mutableFloatStateOf(40f) }
-        var boxWidthDp by remember { mutableFloatStateOf(80f) }
+        var boxWidthDp by remember { mutableFloatStateOf(200f) }
         var boxHeightDp by remember { mutableFloatStateOf(80f) }
-        var strength by remember { mutableFloatStateOf(100f) }
+        var strength by remember { mutableFloatStateOf(60f) }
         var rampPower by remember { mutableFloatStateOf(4f) }
         var gradientEps by remember { mutableFloatStateOf(10f) }
         var showGradient by remember { mutableStateOf(false) }
