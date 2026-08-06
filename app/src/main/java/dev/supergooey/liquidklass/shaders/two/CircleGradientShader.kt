@@ -85,7 +85,7 @@ val circleDisplacementShader = """
 
         float refractionLength = min(halfSize.x, halfSize.y);
         float t = clamp(1.0 + d / refractionLength, 0.0, 1.0); // 0 close to center, 1 at edge
-        float ramp = pow(t, rampPower); // change ramp curve via uniform
+        float ramp = pow(t, 4.0); // change ramp curve via uniform
         float2 displacement = dir * ramp; // apply that ramp to dir
 
         float2 offset = displacement * strength;
@@ -108,7 +108,7 @@ val circleDisplacementShader = """
         half4 gradientColor = half4(displacement.x * 0.5 + 0.5, displacement.y * 0.5 + 0.5, 0.0, 1.0);
         half4 gradientVis = mix(half4(0.05, 0.05, 0.05, 1.0), gradientColor, mask);
 
-        return mix(result, gradientVis, showGradient);
+        return mix(result, gradientVis, 0.0);
     }
 
 """.trimIndent()
@@ -127,7 +127,7 @@ fun CircleDisplacementMap() {
         var center by remember { mutableStateOf(Offset.Unspecified) }
 
         var radiusDp by remember { mutableFloatStateOf(40f) }
-        var boxWidthDp by remember { mutableFloatStateOf(200f) }
+        var boxWidthDp by remember { mutableFloatStateOf(80f) }
         var boxHeightDp by remember { mutableFloatStateOf(80f) }
         var strength by remember { mutableFloatStateOf(60f) }
         var rampPower by remember { mutableFloatStateOf(4f) }
