@@ -49,7 +49,7 @@ private val glassyShader = """
     float height(float2 point, float radius, float extrusion, float bevelWidth) {
         float d = sdfCircle(point);
         float t = clamp(d / bevelWidth, 0.0, 1.0);
-        return extrusion * t;
+        return extrusion * sqrt(1.0 - (1.0 - t) * (1.0 - t));
     }
     
     float3 computeNormal(float2 point, float radius, float extrusion, float bevelWidth, float eps) {
@@ -122,11 +122,11 @@ private fun FromMemoryPlayground() {
                         )
                         setFloatUniform(
                             "extrusion",
-                            40.dp.toPx()
+                            8.dp.toPx()
                         )
                         setFloatUniform(
                             "bevelWidth",
-                            4.dp.toPx()
+                            30.dp.toPx()
                         )
                     }
                     renderEffect = RenderEffect.createRuntimeShaderEffect(
