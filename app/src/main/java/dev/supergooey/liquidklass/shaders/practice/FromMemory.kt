@@ -32,6 +32,7 @@ private val glassyShader = """
     uniform float2 center1;
     uniform float2 center2;
     uniform float radius;
+    uniform float extrusion;
    
     // positive inside, negative out
     float sdfCircle(float2 point) {
@@ -44,15 +45,16 @@ private val glassyShader = """
         return float2(dX, dY) / (2.0 * eps);
     }
     
-    float height(float2 point, float radius) {
-        return 0.0;
+    float height(float2 point, float radius, float extrusion) {
+        float d = sdfCircle(point);
+        return d > 0.0 ? extrusion : 0.0;
     }
     
-    float3 computeNormal(float2 point, float radius, float eps) {
-        float hL = height(point - float2(eps, 0.0), radius);
-        float hR = height(point + float2(eps, 0.0), radius);
-        float hD = height(point - float2(0.0, eps), radius);
-        float hU = height(point + float2(0.0, eps), radius);
+    float3 computeNormal(float2 point, float radius, float extrusion, float eps) {
+        float hL = height(point - float2(eps, 0.0), radius, extrusion);
+        float hR = height(point + float2(eps, 0.0), radius, extrusion);
+        float hD = height(point - float2(0.0, eps), radius, extrusion);
+        float hU = height(point + float2(0.0, eps), radius, extrusion);
         
         return normalize(float3(hL - hR, hD - hU, 2.0*eps));
     }
@@ -79,7 +81,7 @@ private val glassyShader = """
         half4 displacement_map = half4(eased_dir.xy * 0.5 + 0.5, 0.5, 1.0);
         
         // 3d shape approach
-        float3 n = computeNormal(p1, radius, eps);
+        float3 n = computeNormal(p1, radius, extrusion, eps);
         half4 normal_map = half4(n * 0.5 + 0.5, 1.0);
         
         return mix(outside, normal_map, mask);
@@ -115,6 +117,10 @@ private fun FromMemoryPlayground() {
                         setFloatUniform(
                             "radius",
                             100.dp.toPx()
+                        )
+                        setFloatUniform(
+                            "extrusion",
+                            40.dp.toPx()
                         )
                     }
                     renderEffect = RenderEffect.createRuntimeShaderEffect(
