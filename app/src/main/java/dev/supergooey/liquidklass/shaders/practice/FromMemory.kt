@@ -4,7 +4,13 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +40,10 @@ private val glassyShader = """
     uniform float radius;
     uniform float extrusion;
     uniform float bevelWidth;
-   
+    uniform float strength;
+    uniform float aberration;
+    uniform int showNormal;
+
     // positive inside, negative out
     float sdfCircle(float2 point) {
         return radius - length(point);
@@ -86,14 +95,20 @@ private val glassyShader = """
         float3 n = computeNormal(p1, radius, extrusion, bevelWidth, eps);
         half4 normal_map = half4(n * 0.5 + 0.5, 1.0);
         
-        float strength = 100.0;
         float3 viewDir = float3(0.0, 0.0, 1.0);
         float eta = 1.0 / 1.5;
         float3 refracted = refract(viewDir, n, eta);
-        
+
         float2 offset = refracted.xy * strength;
-        half4 refracted_color = background.eval(point + offset);
-        
+        float2 abOffset = refracted.xy * aberration;
+        half r = background.eval(point + offset + abOffset).r;
+        half g = background.eval(point + offset).g;
+        half b = background.eval(point + offset - abOffset).b;
+        half4 refracted_color = half4(r,g,b,1.0);
+
+        if (showNormal == 1) {
+            return mix(outside, normal_map, mask);
+        }
         return mix(outside, refracted_color, mask);
     }
 """.trimIndent()
@@ -106,53 +121,77 @@ private fun FromMemoryPlayground() {
         var offset1 by remember { mutableStateOf(Offset.Zero) }
         var offset2 by remember { mutableStateOf(Offset.Zero) }
 
-        Image(
-            modifier = Modifier
-                .onSizeChanged { size ->
-                    offset1 = Offset(size.center.x.toFloat(), size.height * 0.25f)
-                    offset2 = Offset(size.center.x.toFloat(), size.height * 0.75f)
-                }
-                .graphicsLayer {
-                    with(shader) {
-                        setFloatUniform(
-                            "center1",
-                            offset1.x,
-                            offset1.y
-                        )
-                        setFloatUniform(
-                            "center2",
-                            offset2.x,
-                            offset2.y
-                        )
-                        setFloatUniform(
-                            "radius",
-                            100.dp.toPx()
-                        )
-                        setFloatUniform(
-                            "extrusion",
-                            20.dp.toPx()
-                        )
-                        setFloatUniform(
-                            "bevelWidth",
-                            100.dp.toPx()
-                        )
+        var extrusion by remember { mutableStateOf(10f) }   // dp
+        var bevelWidth by remember { mutableStateOf(40f) }  // dp
+        var strength by remember { mutableStateOf(60f) }    // px
+        var aberration by remember { mutableStateOf(6f) }   // px
+        var showNormal by remember { mutableStateOf(false) }
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top half: the image with the shader applied.
+            Image(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .onSizeChanged { size ->
+                        offset1 = Offset(size.center.x.toFloat(), size.height * 0.25f)
+                        offset2 = Offset(size.center.x.toFloat(), size.height * 0.75f)
                     }
-                    renderEffect = RenderEffect.createRuntimeShaderEffect(
-                        shader,
-                        "background"
-                    ).asComposeRenderEffect()
-                }
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectDragGestures { _, dragAmount ->
-                        offset1 += dragAmount
-                        offset2 += dragAmount
+                    .graphicsLayer {
+                        with(shader) {
+                            setFloatUniform("center1", offset1.x, offset1.y)
+                            setFloatUniform("center2", offset2.x, offset2.y)
+                            setFloatUniform("radius", 40.dp.toPx())
+                            setFloatUniform("extrusion", extrusion.dp.toPx())
+                            setFloatUniform("bevelWidth", bevelWidth.dp.toPx())
+                            setFloatUniform("strength", strength)
+                            setFloatUniform("aberration", aberration)
+                            setIntUniform("showNormal", if (showNormal) 1 else 0)
+                        }
+                        renderEffect = RenderEffect.createRuntimeShaderEffect(
+                            shader,
+                            "background"
+                        ).asComposeRenderEffect()
                     }
+                    .pointerInput(Unit) {
+                        detectDragGestures { _, dragAmount ->
+                            offset1 += dragAmount
+                            offset2 += dragAmount
+                        }
+                    },
+                painter = painterResource(R.drawable.bikes),
+                contentScale = ContentScale.Crop,
+                contentDescription = "Bikes"
+            )
+
+            // Bottom half: the control panel.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(16.dp)
+            ) {
+                LabeledSlider("Extrusion", extrusion, 0f..40f) { extrusion = it }
+                LabeledSlider("Bevel Width", bevelWidth, 1f..80f) { bevelWidth = it }
+                LabeledSlider("Strength", strength, 0f..200f) { strength = it }
+                LabeledSlider("Aberration", aberration, 0f..30f) { aberration = it }
+                Button(onClick = { showNormal = !showNormal }) {
+                    Text(if (showNormal) "Show Glass" else "Show Normals")
                 }
-            ,
-            painter = painterResource(R.drawable.icecream),
-            contentScale = ContentScale.Crop,
-            contentDescription = "Ice Cream"
-        )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LabeledSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("$label: ${"%.0f".format(value)}")
+        Slider(value = value, onValueChange = onValueChange, valueRange = range)
     }
 }
