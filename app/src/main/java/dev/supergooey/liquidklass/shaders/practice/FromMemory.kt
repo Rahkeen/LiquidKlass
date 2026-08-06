@@ -86,7 +86,15 @@ private val glassyShader = """
         float3 n = computeNormal(p1, radius, extrusion, bevelWidth, eps);
         half4 normal_map = half4(n * 0.5 + 0.5, 1.0);
         
-        return mix(outside, normal_map, mask);
+        float strength = 100.0;
+        float3 viewDir = float3(0.0, 0.0, 1.0);
+        float eta = 1.0 / 1.5;
+        float3 refracted = refract(viewDir, n, eta);
+        
+        float2 offset = refracted.xy * strength;
+        half4 refracted_color = background.eval(point + offset);
+        
+        return mix(outside, refracted_color, mask);
     }
 """.trimIndent()
 
@@ -122,11 +130,11 @@ private fun FromMemoryPlayground() {
                         )
                         setFloatUniform(
                             "extrusion",
-                            8.dp.toPx()
+                            20.dp.toPx()
                         )
                         setFloatUniform(
                             "bevelWidth",
-                            30.dp.toPx()
+                            100.dp.toPx()
                         )
                     }
                     renderEffect = RenderEffect.createRuntimeShaderEffect(
