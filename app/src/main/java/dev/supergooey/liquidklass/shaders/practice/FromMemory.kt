@@ -33,6 +33,7 @@ private val glassyShader = """
     uniform float2 center2;
     uniform float radius;
     uniform float extrusion;
+    uniform float bevelWidth;
    
     // positive inside, negative out
     float sdfCircle(float2 point) {
@@ -45,16 +46,17 @@ private val glassyShader = """
         return float2(dX, dY) / (2.0 * eps);
     }
     
-    float height(float2 point, float radius, float extrusion) {
+    float height(float2 point, float radius, float extrusion, float bevelWidth) {
         float d = sdfCircle(point);
-        return d > 0.0 ? extrusion : 0.0;
+        float t = clamp(d / bevelWidth, 0.0, 1.0);
+        return extrusion * t;
     }
     
-    float3 computeNormal(float2 point, float radius, float extrusion, float eps) {
-        float hL = height(point - float2(eps, 0.0), radius, extrusion);
-        float hR = height(point + float2(eps, 0.0), radius, extrusion);
-        float hD = height(point - float2(0.0, eps), radius, extrusion);
-        float hU = height(point + float2(0.0, eps), radius, extrusion);
+    float3 computeNormal(float2 point, float radius, float extrusion, float bevelWidth, float eps) {
+        float hL = height(point - float2(eps, 0.0), radius, extrusion, bevelWidth);
+        float hR = height(point + float2(eps, 0.0), radius, extrusion, bevelWidth);
+        float hD = height(point - float2(0.0, eps), radius, extrusion, bevelWidth);
+        float hU = height(point + float2(0.0, eps), radius, extrusion, bevelWidth);
         
         return normalize(float3(hL - hR, hD - hU, 2.0*eps));
     }
@@ -81,7 +83,7 @@ private val glassyShader = """
         half4 displacement_map = half4(eased_dir.xy * 0.5 + 0.5, 0.5, 1.0);
         
         // 3d shape approach
-        float3 n = computeNormal(p1, radius, extrusion, eps);
+        float3 n = computeNormal(p1, radius, extrusion, bevelWidth, eps);
         half4 normal_map = half4(n * 0.5 + 0.5, 1.0);
         
         return mix(outside, normal_map, mask);
@@ -121,6 +123,10 @@ private fun FromMemoryPlayground() {
                         setFloatUniform(
                             "extrusion",
                             40.dp.toPx()
+                        )
+                        setFloatUniform(
+                            "bevelWidth",
+                            4.dp.toPx()
                         )
                     }
                     renderEffect = RenderEffect.createRuntimeShaderEffect(
