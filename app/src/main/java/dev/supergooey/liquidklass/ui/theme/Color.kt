@@ -23,7 +23,7 @@ val Indigo400 = Color(0xFF5C6BC0)
 val Indigo700 = Color(0xFF303F9F)
 
 // Blue
-val Blue400 = Color(0xFF42A5F5)
+val Blue400 = Color(0xFF7F7FFF)
 val Blue700 = Color(0xFF1976D2)
 
 // Cyan
