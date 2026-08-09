@@ -55,17 +55,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.supergooey.liquidklass.shaders.practice.FromMemoryPlayground
 import dev.supergooey.liquidklass.shaders.three.BevelGlassCircle
 import dev.supergooey.liquidklass.shaders.three.BevelGlassRoundedRect
 import dev.supergooey.liquidklass.shaders.three.DisplacementMap4
 import dev.supergooey.liquidklass.shaders.two.CircleDisplacementMap
+import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            BevelGlassCircle()
+            LiquidKlassTheme {
+                FromMemoryPlayground()
+            }
         }
     }
 }
