@@ -1,6 +1,7 @@
 package dev.supergooey.liquidklass.shaders.practice
 
 import android.R.attr.label
+import android.R.attr.value
 import android.graphics.Path
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -10,19 +11,30 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderColors
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
@@ -45,7 +58,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.supergooey.liquidklass.R
+import dev.supergooey.liquidklass.ui.theme.Blue700
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 import kotlin.math.abs
@@ -137,7 +152,7 @@ private enum class GlassShape(
 
 @Preview
 @Composable
-private fun FromMemoryPlayground() {
+fun FromMemoryPlayground() {
     LiquidKlassTheme {
         val shader = remember { RuntimeShader(glassyShader) }
         var center by remember { mutableStateOf(Offset.Zero) }
@@ -156,7 +171,11 @@ private fun FromMemoryPlayground() {
         )
         val halfWidth by animateFloatAsState(shape.halfWidthDp, morphSpec, label = "halfWidth")
         val halfHeight by animateFloatAsState(shape.halfHeightDp, morphSpec, label = "halfHeight")
-        val cornerRadius by animateFloatAsState(shape.cornerRadiusDp, morphSpec, label = "cornerRadius")
+        val cornerRadius by animateFloatAsState(
+            shape.cornerRadiusDp,
+            morphSpec,
+            label = "cornerRadius"
+        )
 
         Column(modifier = Modifier.fillMaxSize()) {
             // Top half: the image with the shader applied.
@@ -200,31 +219,93 @@ private fun FromMemoryPlayground() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .padding(16.dp)
+                    .wrapContentHeight()
+                    .background(color = MaterialTheme.colorScheme.background)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Preset Shapes
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GlassShape.values().forEach { option ->
+                    GlassShape.entries.forEach { option ->
                         val onClick = { shape = option }
-                        if (option == shape) {
-                            Button(onClick = onClick) { Text(option.name) }
+                        val color = if (shape == option) {
+                            MaterialTheme.colorScheme.primary
                         } else {
-                            OutlinedButton(onClick = onClick) { Text(option.name) }
+                            MaterialTheme.colorScheme.secondaryContainer
+                        }
+
+                        when (option) {
+                            GlassShape.Circle -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .clickable(onClick = onClick)
+                                        .background(color = color)
+                                )
+                            }
+
+                            GlassShape.RoundedRect -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 60.dp, height = 40.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable(onClick = onClick)
+                                        .background(color = color)
+                                )
+                            }
+
+                            GlassShape.Pill -> {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 60.dp, height = 40.dp)
+                                        .clip(CircleShape)
+                                        .clickable(onClick = onClick)
+                                        .background(color = color)
+                                )
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Button(
+                        modifier = Modifier.heightIn(min = 40.dp),
+                        onClick = { showNormal = !showNormal }) {
+                        Text(if (showNormal) "Show Glass" else "Show Normals")
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+
+                // Tweaking Height Profile
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        LabeledSlider(label = "Extrusion", value = extrusion, range = 0f..40f) { extrusion = it }
-                        LabeledSlider(label = "Bevel Width", value = bevelWidth, range = 1f..80f) { bevelWidth = it }
+                        LabeledSlider(
+                            value = extrusion,
+                            range = 0f..40f
+                        ) { extrusion = it }
+                        LabeledSlider(
+                            value = bevelWidth,
+                            range = 1f..80f
+                        ) { bevelWidth = it }
                     }
                     val heightProfileColor = MaterialTheme.colorScheme.primary
                     Canvas(
                         modifier = Modifier
-                            .size(120.dp)
+                            .width(100.dp)
+                            .height(80.dp)
+                            .clip(
+                                RoundedCornerShape(
+                                    topStart = 12.dp,
+                                    topEnd = 12.dp,
+                                    bottomStart = 4.dp,
+                                    bottomEnd = 4.dp,
+                                )
+                            )
                             .background(color = MaterialTheme.colorScheme.secondaryContainer)
                     ) {
                         val halfSize = Offset(halfWidth.dp.toPx(), halfHeight.dp.toPx())
@@ -257,11 +338,7 @@ private fun FromMemoryPlayground() {
                         drawPath(path.asComposePath(), color = heightProfileColor)
                     }
                 }
-                LabeledSlider(label = "Strength", value = strength, range = 0f..200f) { strength = it }
-                LabeledSlider(label = "Aberration", value = aberration, range = 0f..30f) { aberration = it }
-                Button(onClick = { showNormal = !showNormal }) {
-                    Text(if (showNormal) "Show Glass" else "Show Normals")
-                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -270,13 +347,33 @@ private fun FromMemoryPlayground() {
 @Composable
 private fun LabeledSlider(
     modifier: Modifier = Modifier,
-    label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit,
 ) {
-    Column(modifier = modifier) {
-        Text("$label: ${"%.0f".format(value)}")
-        Slider(value = value, onValueChange = onValueChange, valueRange = range)
+    Slider(
+        modifier = modifier,
+        value = value,
+        steps = 10,
+        onValueChange = onValueChange,
+        valueRange = range
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Preview
+@Composable
+private fun DebugSlider() {
+    LiquidKlassTheme {
+        Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.background)) {
+            Text(modifier = Modifier.padding(start = 4.dp), text = "Extrusion", style = MaterialTheme.typography.labelSmall, fontSize = 14.sp)
+            Slider(
+                modifier = Modifier.fillMaxWidth(),
+                value = 50f,
+                onValueChange = {},
+                valueRange = 0f..100f,
+                steps = 10,
+            )
+        }
     }
 }
