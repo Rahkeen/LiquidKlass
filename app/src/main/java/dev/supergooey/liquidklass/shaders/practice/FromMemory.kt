@@ -1,7 +1,7 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package dev.supergooey.liquidklass.shaders.practice
 
-import android.R.attr.label
-import android.R.attr.value
 import android.graphics.Path
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,41 +27,42 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.drawscope.DrawStyle
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.supergooey.liquidklass.R
-import dev.supergooey.liquidklass.ui.theme.Blue700
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 import kotlin.math.abs
@@ -157,10 +159,10 @@ fun FromMemoryPlayground() {
         val shader = remember { RuntimeShader(glassyShader) }
         var center by remember { mutableStateOf(Offset.Zero) }
 
-        var extrusion by remember { mutableStateOf(10f) }   // dp
-        var bevelWidth by remember { mutableStateOf(40f) }  // dp
-        var strength by remember { mutableStateOf(60f) }    // px
-        var aberration by remember { mutableStateOf(6f) }   // px
+        var extrusion by remember { mutableFloatStateOf(10f) }
+        var bevelWidth by remember { mutableFloatStateOf(40f) }
+        var strength by remember { mutableFloatStateOf(60f) }
+        var aberration by remember { mutableFloatStateOf(6f) }
         var showNormal by remember { mutableStateOf(false) }
         var shape by remember { mutableStateOf(GlassShape.Circle) }
 
@@ -225,87 +227,84 @@ fun FromMemoryPlayground() {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Preset Shapes
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GlassShape.entries.forEach { option ->
-                        val onClick = { shape = option }
-                        val color = if (shape == option) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        }
-
-                        when (option) {
-                            GlassShape.Circle -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .clickable(onClick = onClick)
-                                        .background(color = color)
-                                )
-                            }
-
-                            GlassShape.RoundedRect -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = 60.dp, height = 40.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable(onClick = onClick)
-                                        .background(color = color)
-                                )
-                            }
-
-                            GlassShape.Pill -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = 60.dp, height = 40.dp)
-                                        .clip(CircleShape)
-                                        .clickable(onClick = onClick)
-                                        .background(color = color)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    Button(
-                        modifier = Modifier.heightIn(min = 40.dp),
-                        onClick = { showNormal = !showNormal }) {
-                        Text(if (showNormal) "Show Glass" else "Show Normals")
-                    }
-                }
-
+//                Row(
+//                    modifier = Modifier.fillMaxWidth(),
+//                    horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
+//                    verticalAlignment = Alignment.CenterVertically
+//                ) {
+//                    GlassShape.entries.forEach { option ->
+//                        val onClick = { shape = option }
+//                        val color = if (shape == option) {
+//                            MaterialTheme.colorScheme.primary
+//                        } else {
+//                            MaterialTheme.colorScheme.secondaryContainer
+//                        }
+//
+//                        when (option) {
+//                            GlassShape.Circle -> {
+//                                Box(
+//                                    modifier = Modifier
+//                                        .size(40.dp)
+//                                        .clip(CircleShape)
+//                                        .clickable(onClick = onClick)
+//                                        .background(color = color)
+//                                )
+//                            }
+//
+//                            GlassShape.RoundedRect -> {
+//                                Box(
+//                                    modifier = Modifier
+//                                        .size(width = 60.dp, height = 40.dp)
+//                                        .clip(RoundedCornerShape(12.dp))
+//                                        .clickable(onClick = onClick)
+//                                        .background(color = color)
+//                                )
+//                            }
+//
+//                            GlassShape.Pill -> {
+//                                Box(
+//                                    modifier = Modifier
+//                                        .size(width = 60.dp, height = 40.dp)
+//                                        .clip(CircleShape)
+//                                        .clickable(onClick = onClick)
+//                                        .background(color = color)
+//                                )
+//                            }
+//                        }
+//                    }
+//                    Spacer(modifier = Modifier.weight(1f))
+//                    Button(
+//                        modifier = Modifier.heightIn(min = 40.dp),
+//                        onClick = { showNormal = !showNormal }) {
+//                        Text(if (showNormal) "Show Glass" else "Show Normals")
+//                    }
+//                }
+//
                 // Tweaking Height Profile
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        LabeledSlider(
+                        DebugSlider(
+                            label = "Extrusion",
                             value = extrusion,
-                            range = 0f..40f
-                        ) { extrusion = it }
-                        LabeledSlider(
+                            range = 0f..40f,
+                            onValueChange = { extrusion = it }
+                        )
+                        DebugSlider(
+                            label = "Bevel",
                             value = bevelWidth,
-                            range = 1f..80f
-                        ) { bevelWidth = it }
+                            range = 0f..60f,
+                            onValueChange = { bevelWidth = it }
+                        )
                     }
                     val heightProfileColor = MaterialTheme.colorScheme.primary
                     Canvas(
                         modifier = Modifier
                             .width(100.dp)
                             .height(80.dp)
-                            .clip(
-                                RoundedCornerShape(
-                                    topStart = 12.dp,
-                                    topEnd = 12.dp,
-                                    bottomStart = 4.dp,
-                                    bottomEnd = 4.dp,
-                                )
-                            )
+                            .clip(shape = RoundedCornerShape(6.dp))
                             .background(color = MaterialTheme.colorScheme.secondaryContainer)
                     ) {
                         val halfSize = Offset(halfWidth.dp.toPx(), halfHeight.dp.toPx())
@@ -344,36 +343,55 @@ fun FromMemoryPlayground() {
     }
 }
 
+@ExperimentalMaterial3Api
 @Composable
-private fun LabeledSlider(
+private fun DebugSlider(
     modifier: Modifier = Modifier,
+    label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit,
 ) {
-    Slider(
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
         modifier = modifier,
-        value = value,
-        steps = 10,
-        onValueChange = onValueChange,
-        valueRange = range
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Preview
-@Composable
-private fun DebugSlider() {
-    LiquidKlassTheme {
-        Column(modifier = Modifier.background(color = MaterialTheme.colorScheme.background)) {
-            Text(modifier = Modifier.padding(start = 4.dp), text = "Extrusion", style = MaterialTheme.typography.labelSmall, fontSize = 14.sp)
-            Slider(
-                modifier = Modifier.fillMaxWidth(),
-                value = 50f,
-                onValueChange = {},
-                valueRange = 0f..100f,
-                steps = 10,
+        verticalArrangement = Arrangement.spacedBy((-8).dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.labelSmall
             )
+
+            val lineColor = MaterialTheme.colorScheme.primary
+            Spacer(modifier = Modifier.weight(1f).height(1.dp))
+            Box(
+                modifier = Modifier .wrapContentSize()
+            ) {
+                Text(
+                    text = "$value",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
         }
+        Slider(
+            modifier = modifier,
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            interactionSource = interactionSource,
+            thumb = {
+                SliderDefaults.Thumb(
+                    interactionSource = interactionSource,
+                    thumbSize = DpSize(4.dp, 20.dp)
+                )
+            },
+        )
     }
 }

@@ -27,6 +27,7 @@ val Typography = Typography(
         fontFamily = plex,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
+        lineHeight = 20.sp
     )
     /* Other default text styles to override
     titleLarge = TextStyle(
