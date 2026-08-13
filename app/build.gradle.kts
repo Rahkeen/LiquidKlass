@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.backdrop)
+    implementation(libs.chroma.dial)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -62,6 +62,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
+import com.sinasamaki.chroma.dial.Dial
+import com.sinasamaki.chroma.dial.DialColors
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
@@ -69,6 +71,7 @@ import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 @Language("AGSL")
@@ -337,6 +340,25 @@ fun FromMemoryPlayground() {
                         drawPath(path.asComposePath(), color = heightProfileColor)
                     }
                 }
+                // Strength dial: map 0f..100f onto the 0..sweep degree space.
+                val strengthSweep = 360f
+                Row {
+                    Dial(
+                        modifier = Modifier.size(100.dp),
+                        degree = strength / 100f * strengthSweep,
+                        startDegrees = 270f,
+                        sweepDegrees = strengthSweep,
+                        onDegreeChange = { strength = it / strengthSweep * 100f },
+                        colors = DialColors.default(
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer,
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            thumbStrokeColor = MaterialTheme.colorScheme.primary,
+                            activeTickColor = MaterialTheme.colorScheme.onPrimary,
+                            inactiveTickColor = MaterialTheme.colorScheme.outline,
+                        )
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -374,7 +396,7 @@ private fun DebugSlider(
                 modifier = Modifier .wrapContentSize()
             ) {
                 Text(
-                    text = "$value",
+                    text = "${value.roundToInt()}",
                     color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.labelSmall
                 )
