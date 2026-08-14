@@ -26,12 +26,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -45,12 +48,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -62,10 +68,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.center
 import androidx.compose.ui.unit.dp
-import com.sinasamaki.chroma.dial.Dial
-import com.sinasamaki.chroma.dial.DialColors
 import dev.supergooey.liquidklass.R
+import dev.supergooey.liquidklass.ui.theme.Blue400
+import dev.supergooey.liquidklass.ui.theme.Cyan400
+import dev.supergooey.liquidklass.ui.theme.Green400
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
+import dev.supergooey.liquidklass.ui.theme.Orange400
+import dev.supergooey.liquidklass.ui.theme.Purple400
+import dev.supergooey.liquidklass.ui.theme.Red400
+import dev.supergooey.liquidklass.ui.theme.Yellow400
 import org.intellij.lang.annotations.Language
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -227,141 +238,238 @@ fun FromMemoryPlayground() {
                     .wrapContentHeight()
                     .background(color = MaterialTheme.colorScheme.background)
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Preset Shapes
-//                Row(
-//                    modifier = Modifier.fillMaxWidth(),
-//                    horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
-//                    verticalAlignment = Alignment.CenterVertically
-//                ) {
-//                    GlassShape.entries.forEach { option ->
-//                        val onClick = { shape = option }
-//                        val color = if (shape == option) {
-//                            MaterialTheme.colorScheme.primary
-//                        } else {
-//                            MaterialTheme.colorScheme.secondaryContainer
-//                        }
-//
-//                        when (option) {
-//                            GlassShape.Circle -> {
-//                                Box(
-//                                    modifier = Modifier
-//                                        .size(40.dp)
-//                                        .clip(CircleShape)
-//                                        .clickable(onClick = onClick)
-//                                        .background(color = color)
-//                                )
-//                            }
-//
-//                            GlassShape.RoundedRect -> {
-//                                Box(
-//                                    modifier = Modifier
-//                                        .size(width = 60.dp, height = 40.dp)
-//                                        .clip(RoundedCornerShape(12.dp))
-//                                        .clickable(onClick = onClick)
-//                                        .background(color = color)
-//                                )
-//                            }
-//
-//                            GlassShape.Pill -> {
-//                                Box(
-//                                    modifier = Modifier
-//                                        .size(width = 60.dp, height = 40.dp)
-//                                        .clip(CircleShape)
-//                                        .clickable(onClick = onClick)
-//                                        .background(color = color)
-//                                )
-//                            }
-//                        }
-//                    }
-//                    Spacer(modifier = Modifier.weight(1f))
-//                    Button(
-//                        modifier = Modifier.heightIn(min = 40.dp),
-//                        onClick = { showNormal = !showNormal }) {
-//                        Text(if (showNormal) "Show Glass" else "Show Normals")
-//                    }
-//                }
-//
-                // Tweaking Height Profile
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        DebugSlider(
-                            label = "Extrusion",
-                            value = extrusion,
-                            range = 0f..40f,
-                            onValueChange = { extrusion = it }
-                        )
-                        DebugSlider(
-                            label = "Bevel",
-                            value = bevelWidth,
-                            range = 0f..60f,
-                            onValueChange = { bevelWidth = it }
-                        )
-                    }
-                    val heightProfileColor = MaterialTheme.colorScheme.primary
-                    Canvas(
-                        modifier = Modifier
-                            .width(100.dp)
-                            .height(80.dp)
-                            .clip(shape = RoundedCornerShape(6.dp))
-                            .background(color = MaterialTheme.colorScheme.secondaryContainer)
-                    ) {
-                        val halfSize = Offset(halfWidth.dp.toPx(), halfHeight.dp.toPx())
-                        val radius = min(cornerRadius.dp.toPx(), min(halfSize.x, halfSize.y))
-                        val bevelWidthPx = bevelWidth.dp.toPx()
-                        val extrusionPx = extrusion.dp.toPx()
-                        val profileScale = size.width / (halfSize.x * 2f)
+                ShapePresetSection(
+                    shape = shape,
+                    onShapeSelected = { shape = it },
+                    showNormal = showNormal,
+                    onShowNormalChange = { showNormal = it }
+                )
 
-                        val path = Path().apply {
-                            moveTo(0f, size.height)
+                HeightProfileSection(
+                    extrusion = extrusion,
+                    onExtrusionChange = { extrusion = it },
+                    bevelWidth = bevelWidth,
+                    onBevelWidthChange = { bevelWidth = it },
+                    halfWidth = halfWidth,
+                    halfHeight = halfHeight,
+                    cornerRadius = cornerRadius
+                )
 
-                            for (canvasX in 0..size.width.toInt()) {
-                                val pointX = canvasX / profileScale - halfSize.x
-                                val qx = abs(pointX) - halfSize.x + radius
-                                val qy = -halfSize.y + radius
-                                val distance = -(
-                                        hypot(max(qx, 0f), max(qy, 0f)) +
-                                                min(max(qx, qy), 0f) - radius
-                                        )
-                                val t = (distance / bevelWidthPx).coerceIn(0f, 1f)
-                                val height = extrusionPx * sqrt(1f - (1f - t) * (1f - t))
+                RefractionSection(
+                    strength = strength,
+                    onStrengthChange = { strength = it },
+                    aberration = aberration,
+                    onAberrationChange = { aberration = it }
+                )
 
-                                lineTo(canvasX.toFloat(), size.height - height * profileScale)
-                            }
-
-                            lineTo(size.width, size.height)
-                            close()
-                        }
-
-                        drawPath(path.asComposePath(), color = heightProfileColor)
-                    }
-                }
-                // Strength dial: map 0f..100f onto the 0..sweep degree space.
-                val strengthSweep = 360f
-                Row {
-                    Dial(
-                        modifier = Modifier.size(100.dp),
-                        degree = strength / 100f * strengthSweep,
-                        startDegrees = 270f,
-                        sweepDegrees = strengthSweep,
-                        onDegreeChange = { strength = it / strengthSweep * 100f },
-                        colors = DialColors.default(
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer,
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            thumbStrokeColor = MaterialTheme.colorScheme.primary,
-                            activeTickColor = MaterialTheme.colorScheme.onPrimary,
-                            inactiveTickColor = MaterialTheme.colorScheme.outline,
-                        )
-                    )
-                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun ShapePresetSection(
+    shape: GlassShape,
+    onShapeSelected: (GlassShape) -> Unit,
+    showNormal: Boolean,
+    onShowNormalChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color = MaterialTheme.colorScheme.surfaceContainer)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        GlassShape.entries.forEach { option ->
+            val onClick = { onShapeSelected(option) }
+            val color = if (shape == option) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            }
+
+            when (option) {
+                GlassShape.Circle -> {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onClick)
+                            .background(color = color)
+                    )
+                }
+
+                GlassShape.RoundedRect -> {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 60.dp, height = 40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onClick)
+                            .background(color = color)
+                    )
+                }
+
+                GlassShape.Pill -> {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 60.dp, height = 40.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onClick)
+                            .background(color = color)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        Row(
+            modifier = Modifier
+                .height(40.dp)
+                .widthIn(min = 60.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onShowNormalChange(!showNormal) }
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            Text(
+                text = "Normals",
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                style = MaterialTheme.typography.labelSmall
+            )
+            Box(contentAlignment = Alignment.Center) {
+                // Light
+                Box(
+                    modifier = Modifier
+                        .alpha(if (showNormal) 1f else 0f)
+                        .blur(
+                            radius = 16.dp,
+                            edgeTreatment = BlurredEdgeTreatment.Unbounded
+                        )
+                        .size(20.dp)
+                        .background(color = MaterialTheme.colorScheme.primary)
+                )
+                // LED
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(
+                            shape = CircleShape,
+                            color = if (showNormal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceBright
+                        )
+                )
+
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeightProfileSection(
+    extrusion: Float,
+    onExtrusionChange: (Float) -> Unit,
+    bevelWidth: Float,
+    onBevelWidthChange: (Float) -> Unit,
+    halfWidth: Float,
+    halfHeight: Float,
+    cornerRadius: Float,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color = MaterialTheme.colorScheme.surfaceContainer)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            DebugSlider(
+                label = "Extrusion",
+                value = extrusion,
+                range = 0f..40f,
+                onValueChange = onExtrusionChange
+            )
+            DebugSlider(
+                label = "Bevel",
+                value = bevelWidth,
+                range = 0f..60f,
+                onValueChange = onBevelWidthChange
+            )
+        }
+        val heightProfileColor = MaterialTheme.colorScheme.primary
+        Canvas(
+            modifier = Modifier
+                .width(100.dp)
+                .height(80.dp)
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = MaterialTheme.colorScheme.secondaryContainer)
+        ) {
+            val halfSize = Offset(halfWidth.dp.toPx(), halfHeight.dp.toPx())
+            val radius = min(cornerRadius.dp.toPx(), min(halfSize.x, halfSize.y))
+            val bevelWidthPx = bevelWidth.dp.toPx()
+            val extrusionPx = extrusion.dp.toPx()
+            val profileScale = size.width / (halfSize.x * 2f)
+
+            val path = Path().apply {
+                moveTo(0f, size.height)
+
+                for (canvasX in 0..size.width.toInt()) {
+                    val pointX = canvasX / profileScale - halfSize.x
+                    val qx = abs(pointX) - halfSize.x + radius
+                    val qy = -halfSize.y + radius
+                    val distance = -(
+                            hypot(max(qx, 0f), max(qy, 0f)) +
+                                    min(max(qx, qy), 0f) - radius
+                            )
+                    val t = (distance / bevelWidthPx).coerceIn(0f, 1f)
+                    val height = extrusionPx * sqrt(1f - (1f - t) * (1f - t))
+
+                    lineTo(canvasX.toFloat(), size.height - height * profileScale)
+                }
+
+                lineTo(size.width, size.height)
+                close()
+            }
+
+            drawPath(path.asComposePath(), color = heightProfileColor)
+        }
+    }
+}
+
+@ExperimentalMaterial3Api
+@Composable
+private fun RefractionSection(
+    strength: Float,
+    onStrengthChange: (Float) -> Unit,
+    aberration: Float,
+    onAberrationChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color = MaterialTheme.colorScheme.surfaceContainer)
+            .padding(16.dp)
+    ) {
+        DebugSlider(
+            label = "Strength",
+            value = strength,
+            range = 0f..100f,
+            onValueChange = onStrengthChange
+        )
+        DebugSlider(
+            label = "Aberration",
+            value = aberration,
+            range = 0f..20f,
+            onValueChange = onAberrationChange
+        )
     }
 }
 
@@ -390,10 +498,13 @@ private fun DebugSlider(
                 style = MaterialTheme.typography.labelSmall
             )
 
-            val lineColor = MaterialTheme.colorScheme.primary
-            Spacer(modifier = Modifier.weight(1f).height(1.dp))
+            Spacer(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(1.dp)
+            )
             Box(
-                modifier = Modifier .wrapContentSize()
+                modifier = Modifier.wrapContentSize()
             ) {
                 Text(
                     text = "${value.roundToInt()}",
