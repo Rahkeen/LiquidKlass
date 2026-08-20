@@ -4,46 +4,55 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
-import kotlin.math.roundToInt
 
-// Max glass shapes the shader can composite in one pass. The uniform arrays are
-// fixed-size, so this is the hard cap; bump it (here and in the shader) together.
-private const val MAX_GLASS_COMPONENTS = 8
+private const val MAX_GLASS_COMPONENTS = 4
 
-// A single glass shape's geometry in the glass layer's pixel space. Appearance
-// (bevel, refraction, rim) is shared across all shapes, so only geometry lives here.
 private data class GlassBounds(
     val center: Offset,
     val halfSize: Size,
@@ -135,10 +144,6 @@ private val multiGlassShader = """
         return normalize(float3(hL - hR, hD - hU, 2.0 * eps));
     }
 
-    // Transparent everywhere the merged shape doesn't cover: this shader is
-    // composited over a separately-drawn sharp background, so unmasked pixels
-    // must stay invisible rather than repainting the (blurred) "background"
-    // input.
     half4 main(float2 point) {
         float d = sceneSDF(point);
         float aa = 1.0;
@@ -174,24 +179,102 @@ private val multiGlassShader = """
     }
 """.trimIndent()
 
+// Sets the appearance uniforms shared by every glass shape (bevel, refraction,
+// rim lighting, merge fillet). These are fixed for now, not per-shape.
+private fun RuntimeShader.setAppearanceUniforms(density: Density) = with(density) {
+    setFloatUniform("extrusion", 10.dp.toPx())
+    setFloatUniform("bevelWidth", 30.dp.toPx())
+    setFloatUniform("strength", 60f)
+    setFloatUniform("aberration", 12f)
+    setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
+    setFloatUniform("fresnelPower", 1f)
+    setFloatUniform("rimSharpness", 4f)
+    setFloatUniform("rimStrength", 1f)
+    setFloatUniform("rimFloor", 0.15f)
+    setFloatUniform("mergeRadius", 50.dp.toPx())
+}
+
+// Flattens up to MAX_GLASS_COMPONENTS shapes into the shader's fixed-size
+// geometry uniforms.
+private fun RuntimeShader.setGeometryUniforms(shapes: List<GlassBounds>) {
+    val active = shapes.take(MAX_GLASS_COMPONENTS)
+    val centers = FloatArray(MAX_GLASS_COMPONENTS * 2)
+    val halfSizes = FloatArray(MAX_GLASS_COMPONENTS * 2)
+    val radii = FloatArray(MAX_GLASS_COMPONENTS)
+    active.forEachIndexed { i, b ->
+        centers[i * 2] = b.center.x
+        centers[i * 2 + 1] = b.center.y
+        halfSizes[i * 2] = b.halfSize.width
+        halfSizes[i * 2 + 1] = b.halfSize.height
+        radii[i] = b.cornerRadius
+    }
+    setIntUniform("count", active.size)
+    setFloatUniform("centers", centers)
+    setFloatUniform("halfSizes", halfSizes)
+    setFloatUniform("cornerRadii", radii)
+}
+
+private fun glassRenderEffect(shader: RuntimeShader, blurRadiusPx: Float) =
+    RenderEffect.createChainEffect(
+        RenderEffect.createRuntimeShaderEffect(shader, "background"),
+        RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP)
+    ).asComposeRenderEffect()
+
+private fun Modifier.reportGlassBounds(
+    density: Density,
+    cornerRadius: Dp,
+    onBounds: (GlassBounds) -> Unit,
+): Modifier = onPlaced { coords ->
+    onBounds(
+        GlassBounds(
+            center = coords.boundsInParent().center,
+            halfSize = Size(coords.size.width / 2f, coords.size.height / 2f),
+            cornerRadius = with(density) { cornerRadius.toPx() }
+        )
+    )
+}
+
+// Renders the glass effect for the given shapes: reads backgroundLayer,
+// blurs + refracts it through the shader, masks to the shapes' bounds. Draws
+// nothing else, so it must sit between the background and any glass content
+// in z-order for that content to render on top of (not under) the glass.
+@Composable
+private fun GlassPanel(
+    shader: RuntimeShader,
+    backgroundLayer: GraphicsLayer,
+    shapes: List<GlassBounds>,
+    modifier: Modifier = Modifier,
+) {
+    val glassLayer = rememberGraphicsLayer()
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawWithContent {
+                with(shader) {
+                    setAppearanceUniforms(this@drawWithContent)
+                    setGeometryUniforms(shapes)
+                }
+                glassLayer.record {
+                    drawLayer(backgroundLayer)
+                }
+                glassLayer.renderEffect = glassRenderEffect(shader, 2.dp.toPx())
+                drawLayer(glassLayer)
+            }
+    )
+}
+
 @Composable
 fun LiquidGlassScreen(modifier: Modifier = Modifier) {
     val shader = remember { RuntimeShader(multiGlassShader) }
-    // Recorded once from the background Image's own draw. Kept as a separate
-    // layer (rather than reading straight off the Image) so it can later be
-    // copied and blurred before the glass layer samples it.
     val backgroundLayer = rememberGraphicsLayer()
-    // Where the shader's output actually gets rendered.
-    val glassLayer = rememberGraphicsLayer()
-    // Each component reports its measured bounds here, keyed by a stable id.
-    val bounds = remember { mutableStateMapOf<Int, GlassBounds>() }
-    // The glass layer (Row) is full size and coincides with the background, so
-    // its own coordinate space doubles as the shader's pixel space.
-    var glassLayerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // One slot per glass shape on screen. Just the nav row for now, so one
+    // slot; add more as more glass elements show up.
+    val glassShapes = remember { mutableStateListOf<GlassBounds?>(null) }
+    val density = LocalDensity.current
 
     Box(modifier = modifier.fillMaxSize()) {
         // Background: draws itself normally, and records that same output into
-        // backgroundLayer for the glass layer (or a future blur pass) to reuse.
+        // backgroundLayer for GlassPanel to reuse.
         Image(
             modifier = Modifier
                 .fillMaxSize()
@@ -203,126 +286,78 @@ fun LiquidGlassScreen(modifier: Modifier = Modifier) {
             contentScale = ContentScale.Crop,
             contentDescription = "Cool"
         )
+        
+        GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull())
 
-        Box(
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { glassLayerCoordinates = it }
-                .drawWithContent {
-                    with(shader) {
-                        setFloatUniform("extrusion", 10.dp.toPx())
-                        setFloatUniform("bevelWidth", 40.dp.toPx())
-                        setFloatUniform("strength", 60f)
-                        setFloatUniform("aberration", 12f)
-                        setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
-                        setFloatUniform("fresnelPower", 1f)
-                        setFloatUniform("rimSharpness", 4f)
-                        setFloatUniform("rimStrength", 1f)
-                        setFloatUniform("rimFloor", 0.15f)
-                        setFloatUniform("mergeRadius", 50.dp.toPx())
-
-                        val shapes = bounds.values.take(MAX_GLASS_COMPONENTS)
-                        val centers = FloatArray(MAX_GLASS_COMPONENTS * 2)
-                        val halfSizes = FloatArray(MAX_GLASS_COMPONENTS * 2)
-                        val radii = FloatArray(MAX_GLASS_COMPONENTS)
-                        shapes.forEachIndexed { i, b ->
-                            centers[i * 2] = b.center.x
-                            centers[i * 2 + 1] = b.center.y
-                            halfSizes[i * 2] = b.halfSize.width
-                            halfSizes[i * 2 + 1] = b.halfSize.height
-                            radii[i] = b.cornerRadius
-                        }
-                        setIntUniform("count", shapes.size)
-                        setFloatUniform("centers", centers)
-                        setFloatUniform("halfSizes", halfSizes)
-                        setFloatUniform("cornerRadii", radii)
-                    }
-
-                    glassLayer.record {
-                        drawLayer(backgroundLayer)
-                    }
-                    // Blur the raw content first (inner), then let the shader
-                    // (outer) read that blurred result as "background" and mask
-                    // it down to just the shapes. Order matters: chaining the
-                    // other way round would blur the shader's own (already
-                    // opaque, unmasked) output and frost the whole screen.
-                    val shaderEffect = RenderEffect.createRuntimeShaderEffect(shader, "background")
-                    val blurEffect = RenderEffect.createBlurEffect(
-                        2.dp.toPx(),
-                        2.dp.toPx(),
-                        Shader.TileMode.CLAMP
-                    )
-                    glassLayer.renderEffect = RenderEffect
-                        .createChainEffect(shaderEffect, blurEffect)
-                        .asComposeRenderEffect()
-                    drawLayer(glassLayer)
-                }
-        )
-
-        // Draggable circle: tracks raw drag delta in px and reports its own
-        // bounds via GlassComponent, same as the static shape. The glass Box
-        // above reads `bounds` every frame, so it follows the drag with no
-        // extra wiring needed.
-        var dragOffset by remember { mutableStateOf(Offset.Zero) }
-        GlassComponent(
-            id = 0,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-60).dp)
-                .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
-                .size(80.dp)
-                .pointerInput(Unit) {
-                    detectDragGestures { change, amount ->
-                        change.consume()
-                        dragOffset += amount
-                    }
-                },
-            cornerRadius = 40.dp,
-            layerCoordinates = { glassLayerCoordinates },
-            onBounds = { id, b -> bounds[id] = b }
-        )
-
-        GlassComponent(
-            id = 1,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 60.dp)
-                .size(width = 140.dp, height = 80.dp),
-            cornerRadius = 40.dp,
-            layerCoordinates = { glassLayerCoordinates },
-            onBounds = { id, b -> bounds[id] = b }
-        )
-    }
-}
-
-// A glass "slot": lays out at the given size and reports its bounds (in the
-// glass layer's space) so the shader can draw the glass over it.
-@Composable
-private fun GlassComponent(
-    id: Int,
-    cornerRadius: Dp,
-    layerCoordinates: () -> LayoutCoordinates?,
-    onBounds: (Int, GlassBounds) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val density = LocalDensity.current
-    Box(
-        modifier = modifier
-            .onGloballyPositioned { coords ->
-                val layer = layerCoordinates() ?: return@onGloballyPositioned
-                val topLeft = layer.localPositionOf(coords, Offset.Zero)
-                val width = coords.size.width.toFloat()
-                val height = coords.size.height.toFloat()
-                onBounds(
-                    id,
-                    GlassBounds(
-                        center = Offset(topLeft.x + width / 2f, topLeft.y + height / 2f),
-                        halfSize = Size(width / 2f, height / 2f),
-                        cornerRadius = with(density) { cornerRadius.toPx() }
-                    )
+                .align(Alignment.BottomCenter)
+                .padding(32.dp)
+                .clip(CircleShape)
+                .reportGlassBounds(density, cornerRadius = 32.dp) { glassShapes[0] = it }
+                .padding(4.dp)
+            ,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(color = Color.White.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    modifier = Modifier.size(24.dp),
+                    imageVector = Icons.Default.Home,
+                    tint = Color.Black,
+                    contentDescription = ""
                 )
             }
-    )
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(30.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    modifier = Modifier.size(24.dp),
+                    imageVector = Icons.Default.Search,
+                    tint = Color.Black,
+                    contentDescription = ""
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(30.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    modifier = Modifier.size(24.dp),
+                    imageVector = Icons.Default.Add,
+                    tint = Color.Black,
+                    contentDescription = ""
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(30.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    modifier = Modifier.size(24.dp),
+                    imageVector = Icons.Default.Settings,
+                    tint = Color.Black,
+                    contentDescription = ""
+                )
+            }
+        }
+    }
 }
 
 @Preview
