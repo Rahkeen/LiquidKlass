@@ -7,15 +7,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
@@ -182,7 +186,7 @@ private val multiGlassShader = """
 // Sets the appearance uniforms shared by every glass shape (bevel, refraction,
 // rim lighting, merge fillet). These are fixed for now, not per-shape.
 private fun RuntimeShader.setAppearanceUniforms(density: Density) = with(density) {
-    setFloatUniform("extrusion", 10.dp.toPx())
+    setFloatUniform("extrusion", 8.dp.toPx())
     setFloatUniform("bevelWidth", 30.dp.toPx())
     setFloatUniform("strength", 60f)
     setFloatUniform("aberration", 12f)
@@ -272,21 +276,57 @@ fun LiquidGlassScreen(modifier: Modifier = Modifier) {
     val glassShapes = remember { mutableStateListOf<GlassBounds?>(null) }
     val density = LocalDensity.current
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(color = MaterialTheme.colorScheme.background)
+    ) {
         // Background: draws itself normally, and records that same output into
         // backgroundLayer for GlassPanel to reuse.
-        Image(
-            modifier = Modifier
-                .fillMaxSize()
+//        Image(
+//            modifier = Modifier
+//                .fillMaxSize()
+//                .drawWithContent {
+//                    backgroundLayer.record { this@drawWithContent.drawContent() }
+//                    drawContent()
+//                },
+//            painter = painterResource(R.drawable.icecream),
+//            contentScale = ContentScale.Crop,
+//            contentDescription = "Cool"
+//        )
+
+        LazyColumn(
+            modifier
                 .drawWithContent {
                     backgroundLayer.record { this@drawWithContent.drawContent() }
                     drawContent()
-                },
-            painter = painterResource(R.drawable.icecream),
-            contentScale = ContentScale.Crop,
-            contentDescription = "Cool"
-        )
-        
+                }
+                .fillMaxSize()
+                .background(color = MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(images.chunked(2)) { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    row.forEach { cell ->
+                        AsyncImage(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(300.dp)
+                                .clip(RoundedCornerShape(16.dp)),
+                            model = cell.url,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                }
+            }
+        }
+
         GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull())
 
         Row(
@@ -295,8 +335,7 @@ fun LiquidGlassScreen(modifier: Modifier = Modifier) {
                 .padding(32.dp)
                 .clip(CircleShape)
                 .reportGlassBounds(density, cornerRadius = 32.dp) { glassShapes[0] = it }
-                .padding(4.dp)
-            ,
+                .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Box(
@@ -304,13 +343,13 @@ fun LiquidGlassScreen(modifier: Modifier = Modifier) {
                     .width(80.dp)
                     .height(60.dp)
                     .clip(RoundedCornerShape(30.dp))
-                    .background(color = Color.White.copy(alpha = 0.7f)),
+                    .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     modifier = Modifier.size(24.dp),
                     imageVector = Icons.Default.Home,
-                    tint = Color.Black,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     contentDescription = ""
                 )
             }
@@ -367,3 +406,26 @@ private fun LiquidGlassScreenPreview() {
         LiquidGlassScreen()
     }
 }
+
+data class ImageCell(
+    val url: String,
+)
+
+val images = listOf(
+    ImageCell("https://i.pinimg.com/1200x/9a/64/ab/9a64ab424a35edb29f1d3900d0f9099f.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/1e/eb/76/1eeb76231956c8cd5e5ed50ab5bfdaa4.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/62/d1/57/62d15763cd96004fe6d1739ca14ee546.jpg"),
+    ImageCell("https://i.pinimg.com/736x/36/c1/3c/36c13c651ea0fe43e95de0fa949812ad.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/0e/74/d2/0e74d2d2d58dee4ddf85301d2ed42eea.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/ad/9b/dd/ad9bddb40bedc29a350d538b03b4937e.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/c2/cc/20/c2cc2073b694380faa101ac94618c387.jpg"),
+    ImageCell("https://i.pinimg.com/736x/59/04/4d/59044dd991c0de0f6142a80e342a884d.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/9a/64/ab/9a64ab424a35edb29f1d3900d0f9099f.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/1e/eb/76/1eeb76231956c8cd5e5ed50ab5bfdaa4.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/62/d1/57/62d15763cd96004fe6d1739ca14ee546.jpg"),
+    ImageCell("https://i.pinimg.com/736x/36/c1/3c/36c13c651ea0fe43e95de0fa949812ad.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/0e/74/d2/0e74d2d2d58dee4ddf85301d2ed42eea.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/ad/9b/dd/ad9bddb40bedc29a350d538b03b4937e.jpg"),
+    ImageCell("https://i.pinimg.com/1200x/c2/cc/20/c2cc2073b694380faa101ac94618c387.jpg"),
+    ImageCell("https://i.pinimg.com/736x/59/04/4d/59044dd991c0de0f6142a80e342a884d.jpg"),
+)
