@@ -186,10 +186,10 @@ private val multiGlassShader = """
 // Sets the appearance uniforms shared by every glass shape (bevel, refraction,
 // rim lighting, merge fillet). These are fixed for now, not per-shape.
 private fun RuntimeShader.setAppearanceUniforms(density: Density) = with(density) {
-    setFloatUniform("extrusion", 8.dp.toPx())
+    setFloatUniform("extrusion", 4.dp.toPx())
     setFloatUniform("bevelWidth", 30.dp.toPx())
     setFloatUniform("strength", 60f)
-    setFloatUniform("aberration", 12f)
+    setFloatUniform("aberration", 16f)
     setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
     setFloatUniform("fresnelPower", 1f)
     setFloatUniform("rimSharpness", 4f)
