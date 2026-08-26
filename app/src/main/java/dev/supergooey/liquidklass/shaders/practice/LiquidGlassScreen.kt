@@ -161,7 +161,7 @@ val multiGlassShader = """
         // Angled, mirrored rim lighting.
         float fresnel = pow(1.0 - dot(n, viewDir), fresnelPower);
         float2 lightDir = float2(cos(lightAngle), sin(lightAngle));
-        float2 rimDir = normalize(n.xy + float2(1e-5, 0.0));
+        float2 rimDir = normalize(n.xy + float2(1e-5, 0.0)); // adding epsilon nudge to avoid NaN
         float axis = dot(rimDir, lightDir);
         float directional = pow(abs(axis), rimSharpness);
         float rim = fresnel * (rimFloor + (1.0 - rimFloor) * directional) * rimStrength;
@@ -181,7 +181,7 @@ private fun RuntimeShader.setAppearanceUniforms(density: Density) = with(density
     setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
     setFloatUniform("fresnelPower", 1f)
     setFloatUniform("rimSharpness", 4f)
-    setFloatUniform("rimStrength", 1f)
+    setFloatUniform("rimStrength", 2f)
     setFloatUniform("rimFloor", 0.15f)
     setFloatUniform("mergeRadius", 50.dp.toPx())
 }
