@@ -3,7 +3,6 @@ package dev.supergooey.liquidklass.shaders.practice
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,13 +43,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
 import org.intellij.lang.annotations.Language
 
@@ -63,20 +59,8 @@ private data class GlassBounds(
     val cornerRadius: Float,
 )
 
-// Multi-shape version of the glass shader: the geometry of every component is fed
-// in as fixed-size uniform arrays. Rather than compositing each shape's color
-// independently, every shape's distance field is merged into one scene-wide
-// field first (smoothUnion below), and height/normal/mask are all derived from
-// that merged field — so shapes that get close enough actually bulge and fuse
-// into one glass blob (metaball-style), instead of just overlapping.
-//
-// This shader is a mask, not a full repaint: pixels outside every shape are
-// left fully transparent, so it must be composited over a separately-drawn
-// background layer rather than used as that layer's only content. "background"
-// is fed a blurred copy of the scene (see the RenderEffect chain below), so the
-// frosted look only ever appears where a shape's mask lets it show through.
 @Language("AGSL")
-private val multiGlassShader = """
+val multiGlassShader = """
     uniform shader background;
 
     // Per-component geometry (indices 0..count-1 are valid).
@@ -95,11 +79,16 @@ private val multiGlassShader = """
     uniform float rimSharpness;
     uniform float rimStrength;
     uniform float rimFloor;
-    // How close two shapes need to be before they start fusing, and how wide
-    // the resulting fillet is. 0 disables merging (shapes just overlap).
     uniform float mergeRadius;
 
     const int MAX_GLASS = $MAX_GLASS_COMPONENTS;
+    const float eps = 2.0;
+    
+    struct Shape {
+        float2 center;
+        float2 halfSize;
+        float radius;
+    };
 
     // positive inside, 0 at edge, negative outside.
     float sdRoundedRect(float2 p, float2 halfSize, float cornerRadius) {
@@ -108,12 +97,6 @@ private val multiGlassShader = """
         return -(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - cornerRadius);
     }
 
-    // Polynomial smooth union (the usual Quilez smin, adapted for our SDF's
-    // sign convention). Our sdRoundedRect is positive inside / negative
-    // outside — the opposite of the textbook SDF — so a smooth "union of
-    // interiors" here is a smooth MAX, i.e. smin applied to negated distances
-    // and negated back. k = mergeRadius controls the blend width: near 0 this
-    // degenerates to a hard max(a, b) with no fillet.
     float smoothUnion(float a, float b, float k) {
         if (k <= 0.0) {
             return max(a, b);
@@ -123,41 +106,46 @@ private val multiGlassShader = """
     }
 
     // Merged distance field across every active shape.
-    float sceneSDF(float2 point) {
+    float sceneSDF(float2 point, Shape shapes[MAX_GLASS]) {
         float d = -1.0e5;
         for (int i = 0; i < MAX_GLASS; i++) {
             if (i < count) {
-                float di = sdRoundedRect(point - centers[i], halfSizes[i], cornerRadii[i]);
+                Shape s = shapes[i];
+                float di = sdRoundedRect(point - s.center, s.halfSize, s.radius);
                 d = smoothUnion(d, di, mergeRadius);
             }
         }
         return d;
     }
 
-    float sceneHeight(float2 point) {
-        float d = sceneSDF(point);
+    float sceneHeight(float2 point, Shape shapes[MAX_GLASS]) {
+        float d = sceneSDF(point, shapes);
         float t = clamp(d / bevelWidth, 0.0, 1.0);
         return extrusion * sqrt(1.0 - (1.0 - t) * (1.0 - t));
     }
 
-    float3 sceneNormal(float2 point, float eps) {
-        float hL = sceneHeight(point - float2(eps, 0.0));
-        float hR = sceneHeight(point + float2(eps, 0.0));
-        float hD = sceneHeight(point - float2(0.0, eps));
-        float hU = sceneHeight(point + float2(0.0, eps));
+    float3 sceneNormal(float2 point, Shape shapes[MAX_GLASS]) {
+        float hL = sceneHeight(point - float2(eps, 0.0), shapes);
+        float hR = sceneHeight(point + float2(eps, 0.0), shapes);
+        float hD = sceneHeight(point - float2(0.0, eps), shapes);
+        float hU = sceneHeight(point + float2(0.0, eps), shapes);
         return normalize(float3(hL - hR, hD - hU, 2.0 * eps));
     }
 
     half4 main(float2 point) {
-        float d = sceneSDF(point);
+        Shape shapes[MAX_GLASS];
+        for (int i = 0; i < MAX_GLASS; i++) {
+            shapes[i] = Shape(centers[i], halfSizes[i], cornerRadii[i]);
+        }
+
+        float d = sceneSDF(point, shapes);
         float aa = 1.0;
         float mask = smoothstep(-aa, aa, d);
         if (mask <= 0.0) {
             return half4(0.0);
         }
 
-        float eps = 2.0;
-        float3 n = sceneNormal(point, eps);
+        float3 n = sceneNormal(point, shapes);
 
         float3 viewDir = float3(0.0, 0.0, 1.0);
         float eta = 1.0 / 1.5;
