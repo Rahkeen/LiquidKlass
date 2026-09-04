@@ -1,5 +1,5 @@
 [versions]
-agp = "8.13.2"
+agp = "9.3.0"
 kotlin = "2.3.21"
 coreKtx = "1.10.1"
 junit = "4.13.2"
@@ -9,7 +9,8 @@ lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 backdrop = "1.0.6"
 chromaDial = "1.0.0-Alpha10"
-composeBom = "2024.09.00"
+composeBom = "2026.08.00"
+material3 = "1.5.0-alpha27"
 coil = "3.5.0"
 
 [libraries]
@@ -26,7 +27,8 @@ androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
 chroma-dial = { group = "com.sinasamaki", name = "chroma-dial", version.ref = "chromaDial"}
@@ -36,6 +38,5 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 

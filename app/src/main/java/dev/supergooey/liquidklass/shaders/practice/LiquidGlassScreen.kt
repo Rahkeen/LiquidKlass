@@ -270,19 +270,6 @@ fun LiquidGlassScreen(modifier: Modifier = Modifier) {
             .background(color = MaterialTheme.colorScheme.background)
     ) {
         // Background: draws itself normally, and records that same output into
-        // backgroundLayer for GlassPanel to reuse.
-//        Image(
-//            modifier = Modifier
-//                .fillMaxSize()
-//                .drawWithContent {
-//                    backgroundLayer.record { this@drawWithContent.drawContent() }
-//                    drawContent()
-//                },
-//            painter = painterResource(R.drawable.icecream),
-//            contentScale = ContentScale.Crop,
-//            contentDescription = "Cool"
-//        )
-
         LazyColumn(
             modifier
                 .drawWithContent {
