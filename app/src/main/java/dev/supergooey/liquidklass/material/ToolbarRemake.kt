@@ -69,6 +69,17 @@ fun ToolbarExamples() {
     var selected by remember { mutableStateOf(NavigationTabs.Home) }
     var expanded by remember { mutableStateOf(true) }
 
+    var showFab by remember { mutableStateOf(false) }
+    val progress by animateFloatAsState(
+        targetValue = if (showFab) 0f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessVeryLow)
+    )
+    // The pill and fab blob together via mergeRadius while they're
+    // approaching each other, settling back to a tighter radius once fully
+    // joined or fully apart.
+    val blobBoost = (4f * progress * (1f - progress)).coerceIn(0f, 1f)
+    val mergeRadius = 22.dp + 8.dp * blobBoost
+
     Box(modifier = Modifier.fillMaxSize()) {
         ImageGrid(
             modifier = Modifier
@@ -83,10 +94,12 @@ fun ToolbarExamples() {
                 )
         )
 
-        GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull())
+        GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull(), mergeRadius = mergeRadius)
 
         CustomHorizontalFloatingToolbar(
             glassShapes = glassShapes,
+            progress = progress,
+            onToggleFab = { showFab = !showFab },
             modifier = Modifier.align(Alignment.Center),
         )
     }
@@ -95,14 +108,16 @@ fun ToolbarExamples() {
 @Composable
 fun CustomHorizontalFloatingToolbar(
     glassShapes: MutableList<GlassBounds?>,
+    progress: Float,
+    onToggleFab: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showFab by remember { mutableStateOf(false) }
-    val progress by animateFloatAsState(
-        targetValue = if (showFab) 0f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
-    )
     val density = LocalDensity.current
+    // Shrinking (and fading) lags behind the slide so the fab's glass shape
+    // stays full-size while sliding toward the pill, giving mergeRadius time
+    // to blob the two shapes together before the fab shape shrinks away.
+    val shrinkDelay = 0.35f
+    val shrinkProgress = ((progress - shrinkDelay) / (1f - shrinkDelay)).coerceIn(0f, 1f)
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         // Main Content
@@ -113,9 +128,7 @@ fun CustomHorizontalFloatingToolbar(
                 .reportGlassBounds(density, cornerRadius = 999.dp) { glassShapes[0] = it }
                 .zIndex(1f)
         ) {
-            IconButton(onClick = {
-                showFab = !showFab
-            }) {
+            IconButton(onClick = onToggleFab) {
                 Icon(
                     painter = painterResource(R.drawable.ic_home),
                     contentDescription = "Home",
@@ -154,11 +167,12 @@ fun CustomHorizontalFloatingToolbar(
                     }
                 }
                 // Placed below graphicsLayer so it reports the un-transformed
-                // layout box; shrink the reported glass shape by `progress`
-                // ourselves to track the FAB's visual scale-out.
+                // layout box; shrink the reported glass shape by
+                // `shrinkProgress` ourselves to track the FAB's visual
+                // scale-out, delayed relative to the slide.
                 .onPlaced { coords ->
                     val size = coords.size
-                    val scale = 1f - progress
+                    val scale = 1f - shrinkProgress
                     val halfSize = Size(size.width / 2f * scale, size.height / 2f * scale)
                     glassShapes[1] = GlassBounds(
                         center = coords.positionInRoot() + Offset(size.width / 2f, size.height / 2f),
@@ -168,9 +182,7 @@ fun CustomHorizontalFloatingToolbar(
                     )
                 }
                 .graphicsLayer {
-                    scaleX = 1f - progress
-                    scaleY = 1f - progress
-                    alpha = 1f - progress
+                    alpha = 1f - shrinkProgress
                 }
             ,
             onClick = {},

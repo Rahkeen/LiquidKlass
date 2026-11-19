@@ -149,8 +149,10 @@ val multiGlassShader = """
 """.trimIndent()
 
 // Sets the appearance uniforms shared by every glass shape (bevel, refraction,
-// rim lighting, merge fillet). These are fixed for now, not per-shape.
-fun RuntimeShader.setGlassAppearanceUniforms(density: Density) = with(density) {
+// rim lighting, merge fillet). These are fixed for now, not per-shape, except
+// mergeRadius which callers can animate (e.g. to blob shapes together as they
+// approach each other).
+fun RuntimeShader.setGlassAppearanceUniforms(density: Density, mergeRadius: Dp = 24.dp) = with(density) {
     setFloatUniform("extrusion", 4.dp.toPx())
     setFloatUniform("bevelWidth", 30.dp.toPx())
     setFloatUniform("strength", 60f)
@@ -160,7 +162,7 @@ fun RuntimeShader.setGlassAppearanceUniforms(density: Density) = with(density) {
     setFloatUniform("rimSharpness", 4f)
     setFloatUniform("rimStrength", 2f)
     setFloatUniform("rimFloor", 0.15f)
-    setFloatUniform("mergeRadius", 24.dp.toPx())
+    setFloatUniform("mergeRadius", mergeRadius.toPx())
 }
 
 // Flattens up to MAX_GLASS_COMPONENTS shapes into the shader's fixed-size
@@ -218,6 +220,7 @@ fun GlassPanel(
     backgroundLayer: GraphicsLayer,
     shapes: List<GlassBounds>,
     modifier: Modifier = Modifier,
+    mergeRadius: Dp = 24.dp,
 ) {
     val glassLayer = rememberGraphicsLayer()
     var panelOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -227,7 +230,7 @@ fun GlassPanel(
             .onGloballyPositioned { panelOrigin = it.positionInRoot() }
             .drawWithContent {
                 with(shader) {
-                    setGlassAppearanceUniforms(this@drawWithContent)
+                    setGlassAppearanceUniforms(this@drawWithContent, mergeRadius)
                     setGlassGeometryUniforms(shapes, panelOrigin)
                 }
                 glassLayer.record {
