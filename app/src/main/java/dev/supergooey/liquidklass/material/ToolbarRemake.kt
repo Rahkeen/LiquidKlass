@@ -1,10 +1,9 @@
 package dev.supergooey.liquidklass.material
 
-import androidx.compose.animation.core.EaseOutQuad
+import android.graphics.RuntimeShader
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,12 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,11 +33,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -57,6 +63,9 @@ enum class NavigationTabs {
 @Composable
 fun ToolbarExamples() {
     val backgroundLayer = rememberGraphicsLayer()
+    val shader = remember { RuntimeShader(multiGlassShader) }
+    // One slot per glass shape in the toolbar: the pill, and the fab.
+    val glassShapes = remember { mutableStateListOf<GlassBounds?>(null, null) }
     var selected by remember { mutableStateOf(NavigationTabs.Home) }
     var expanded by remember { mutableStateOf(true) }
 
@@ -73,18 +82,27 @@ fun ToolbarExamples() {
                     onCollapse = { expanded = false }
                 )
         )
-        
-        CustomHorizontalFloatingToolbar(modifier = Modifier.align(Alignment.Center))
+
+        GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull())
+
+        CustomHorizontalFloatingToolbar(
+            glassShapes = glassShapes,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 
 @Composable
-fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
+fun CustomHorizontalFloatingToolbar(
+    glassShapes: MutableList<GlassBounds?>,
+    modifier: Modifier = Modifier,
+) {
     var showFab by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
         targetValue = if (showFab) 0f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
     )
+    val density = LocalDensity.current
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         // Main Content
@@ -92,7 +110,7 @@ fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .padding(8.dp)
                 .clip(CircleShape)
-                .background(color = MaterialTheme.colorScheme.primaryContainer)
+                .reportGlassBounds(density, cornerRadius = 999.dp) { glassShapes[0] = it }
                 .zIndex(1f)
         ) {
             IconButton(onClick = {
@@ -135,6 +153,20 @@ fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
                         placeable.placeRelative(-fabOffset, 0)
                     }
                 }
+                // Placed below graphicsLayer so it reports the un-transformed
+                // layout box; shrink the reported glass shape by `progress`
+                // ourselves to track the FAB's visual scale-out.
+                .onPlaced { coords ->
+                    val size = coords.size
+                    val scale = 1f - progress
+                    val halfSize = Size(size.width / 2f * scale, size.height / 2f * scale)
+                    glassShapes[1] = GlassBounds(
+                        center = coords.positionInRoot() + Offset(size.width / 2f, size.height / 2f),
+                        halfSize = halfSize,
+                        // Material3's regular FAB corner radius, not a full circle.
+                        cornerRadius = with(density) { 16.dp.toPx() } * scale,
+                    )
+                }
                 .graphicsLayer {
                     scaleX = 1f - progress
                     scaleY = 1f - progress
@@ -142,8 +174,12 @@ fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
                 }
             ,
             onClick = {},
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 0.dp,
+                pressedElevation = 0.dp,
+            ),
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_add),
