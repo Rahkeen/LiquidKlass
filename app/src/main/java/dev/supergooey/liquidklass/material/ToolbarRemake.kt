@@ -1,5 +1,8 @@
 package dev.supergooey.liquidklass.material
 
+import androidx.compose.animation.core.EaseOutQuad
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,24 +11,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,8 +30,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,6 +42,7 @@ import coil3.compose.AsyncImage
 import dev.supergooey.liquidklass.R
 import dev.supergooey.liquidklass.shaders.practice.images
 import dev.supergooey.liquidklass.ui.theme.LiquidKlassTheme
+import kotlin.math.roundToInt
 
 enum class NavigationTabs {
     Chat,
@@ -74,70 +71,18 @@ fun ToolbarExamples() {
                 )
         )
         
-        RikinToolbar(modifier = Modifier.align(Alignment.Center))
-
-//        HorizontalFloatingToolbar(
-//            modifier = Modifier
-//                .align(Alignment.BottomCenter)
-//                .offset(y = -ScreenOffset)
-//                .zIndex(1f),
-//            expanded = expanded,
-//            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
-//            floatingActionButton = {
-//                FloatingToolbarDefaults.VibrantFloatingActionButton(
-//                    onClick = { expanded = !expanded }
-//                ) {
-//                    Icon(
-//                        painter = painterResource(R.drawable.ic_add),
-//                        contentDescription = "Add"
-//                    )
-//                }
-//            },
-//            animationSpec = MaterialTheme.motionScheme.slowSpatialSpec(),
-//            content = {
-//                IconButton(
-//                    onClick = { selected = NavigationTabs.Chat },
-//                ) {
-//                    Icon(
-//                        modifier = Modifier.size(24.dp),
-//                        painter = painterResource(R.drawable.ic_chat),
-//                        contentDescription = "Chat"
-//                    )
-//                }
-//                IconButton(
-//                    onClick = { selected = NavigationTabs.Profile },
-//                ) {
-//                    Icon(
-//                        modifier = Modifier.size(24.dp),
-//                        painter = painterResource(R.drawable.ic_person),
-//                        contentDescription = "Profile"
-//                    )
-//                }
-//                IconButton(
-//                    onClick = { selected = NavigationTabs.Search },
-//                ) {
-//                    Icon(
-//                        modifier = Modifier.size(24.dp),
-//                        painter = painterResource(R.drawable.ic_search),
-//                        contentDescription = "Search"
-//                    )
-//                }
-//                IconButton(
-//                    onClick = { selected = NavigationTabs.Home },
-//                ) {
-//                    Icon(
-//                        modifier = Modifier.size(24.dp),
-//                        painter = painterResource(R.drawable.ic_home),
-//                        contentDescription = "Home"
-//                    )
-//                }
-//            }
-//        )
+        CustomHorizontalFloatingToolbar(modifier = Modifier.align(Alignment.Center))
     }
 }
 
 @Composable
-fun RikinToolbar(modifier: Modifier = Modifier) {
+fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
+    var showFab by remember { mutableStateOf(false) }
+    val progress by animateFloatAsState(
+        targetValue = if (showFab) 0f else 1f,
+        animationSpec = tween(easing = EaseOutQuad, durationMillis = 1000)
+    )
+
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         // Main Content
         Row(
@@ -145,17 +90,14 @@ fun RikinToolbar(modifier: Modifier = Modifier) {
                 .padding(8.dp)
                 .clip(CircleShape)
                 .background(color = MaterialTheme.colorScheme.primaryContainer)
+                .zIndex(1f)
         ) {
-            IconButton(onClick = {}) {
+            IconButton(onClick = {
+                showFab = !showFab
+            }) {
                 Icon(
                     painter = painterResource(R.drawable.ic_home),
                     contentDescription = "Home",
-                )
-            }
-            IconButton(onClick = {}) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_chat),
-                    contentDescription = "Chat",
                 )
             }
             IconButton(onClick = {}) {
@@ -170,10 +112,30 @@ fun RikinToolbar(modifier: Modifier = Modifier) {
                     contentDescription = "Search",
                 )
             }
+            IconButton(onClick = {}) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_chat),
+                    contentDescription = "Chat",
+                )
+            }
         }
 
         // Fab
         FloatingActionButton(
+            modifier = Modifier
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    val padding = 8.dp.toPx()
+                    val offsetWidth = placeable.width + padding
+                    val fabOffset = (progress * offsetWidth).roundToInt()
+                    layout(placeable.width, placeable.height) {
+                        placeable.placeRelative(-fabOffset, 0)
+                    }
+                }
+                .graphicsLayer {
+                    this.alpha = 1f - progress
+                }
+            ,
             onClick = {},
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
