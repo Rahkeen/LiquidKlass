@@ -1,7 +1,9 @@
 package dev.supergooey.liquidklass.material
 
 import androidx.compose.animation.core.EaseOutQuad
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -80,7 +83,7 @@ fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
     var showFab by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
         targetValue = if (showFab) 0f else 1f,
-        animationSpec = tween(easing = EaseOutQuad, durationMillis = 1000)
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
     )
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -133,7 +136,9 @@ fun CustomHorizontalFloatingToolbar(modifier: Modifier = Modifier) {
                     }
                 }
                 .graphicsLayer {
-                    this.alpha = 1f - progress
+                    scaleX = 1f - progress
+                    scaleY = 1f - progress
+                    alpha = 1f - progress
                 }
             ,
             onClick = {},
