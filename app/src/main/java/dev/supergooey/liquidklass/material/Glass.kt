@@ -185,7 +185,7 @@ val multiGlassShader = """
 fun RuntimeShader.setGlassAppearanceUniforms(density: Density, mergeRadius: Dp = 24.dp) = with(density) {
     setFloatUniform("extrusion", 4.dp.toPx())
     setFloatUniform("bevelWidth", 30.dp.toPx())
-    setFloatUniform("strength", 100f)
+    setFloatUniform("strength", 60f)
     setFloatUniform("aberration", 16f)
     setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
     setFloatUniform("fresnelPower", 1f)

@@ -100,7 +100,7 @@ fun ToolbarExamples() {
             glassShapes = glassShapes,
             progress = progress,
             onToggleFab = { showFab = !showFab },
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
         )
     }
 }
