@@ -118,6 +118,8 @@ fun CustomHorizontalFloatingToolbar(
     // to blob the two shapes together before the fab shape shrinks away.
     val shrinkDelay = 0.35f
     val shrinkProgress = ((progress - shrinkDelay) / (1f - shrinkDelay)).coerceIn(0f, 1f)
+    // Read outside the FAB's onPlaced callback, which isn't @Composable.
+    val fabTint = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         // Main Content
@@ -125,7 +127,11 @@ fun CustomHorizontalFloatingToolbar(
             modifier = Modifier
                 .padding(8.dp)
                 .clip(CircleShape)
-                .reportGlassBounds(density, cornerRadius = 999.dp) { glassShapes[0] = it }
+                .reportGlassBounds(
+                    density,
+                    cornerRadius = 999.dp,
+                    tint = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
+                ) { glassShapes[0] = it }
                 .zIndex(1f)
         ) {
             IconButton(onClick = onToggleFab) {
@@ -179,6 +185,7 @@ fun CustomHorizontalFloatingToolbar(
                         halfSize = halfSize,
                         // Material3's regular FAB corner radius, not a full circle.
                         cornerRadius = with(density) { 16.dp.toPx() } * scale,
+                        tint = fabTint,
                     )
                 }
                 .graphicsLayer {

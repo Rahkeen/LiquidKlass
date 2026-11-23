@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -30,10 +31,13 @@ const val MAX_GLASS_COMPONENTS = 4
 
 // Position/size are in root coordinates so any number of GlassPanels, each
 // nested arbitrarily deep in the tree, can report into the same shader space.
+// `tint`'s alpha is the tint's strength (0 = clear glass), its rgb the color
+// mixed into the refracted background.
 data class GlassBounds(
     val center: Offset,
     val halfSize: Size,
     val cornerRadius: Float,
+    val tint: Color = Color.Transparent,
 )
 
 @Language("AGSL")
@@ -45,6 +49,8 @@ val multiGlassShader = """
     uniform float2 centers[$MAX_GLASS_COMPONENTS];
     uniform float2 halfSizes[$MAX_GLASS_COMPONENTS];
     uniform float cornerRadii[$MAX_GLASS_COMPONENTS];
+    // rgb = tint color, a = tint strength (0 = clear glass).
+    uniform float4 tints[$MAX_GLASS_COMPONENTS];
 
     // Shared appearance.
     uniform float extrusion;
@@ -95,6 +101,27 @@ val multiGlassShader = """
         return d;
     }
 
+    // Blends each shape's tint using the same per-pair weight smoothUnion
+    // uses to blend distances, so the tint seam tracks the geometric seam:
+    // pure per-shape tint away from other shapes, smoothly mixed where they
+    // merge.
+    float4 sceneTint(float2 point, Shape shapes[MAX_GLASS], float4 tints[MAX_GLASS]) {
+        float d = -1.0e5;
+        float4 tint = float4(0.0);
+        for (int i = 0; i < MAX_GLASS; i++) {
+            if (i < count) {
+                Shape s = shapes[i];
+                float di = sdRoundedRect(point - s.center, s.halfSize, s.radius);
+                float h = mergeRadius <= 0.0
+                    ? (d > di ? 1.0 : 0.0)
+                    : clamp(0.5 + 0.5 * (d - di) / mergeRadius, 0.0, 1.0);
+                tint = mix(tints[i], tint, h);
+                d = smoothUnion(d, di, mergeRadius);
+            }
+        }
+        return tint;
+    }
+
     float sceneHeight(float2 point, Shape shapes[MAX_GLASS]) {
         float d = sceneSDF(point, shapes);
         float t = clamp(d / bevelWidth, 0.0, 1.0);
@@ -135,6 +162,9 @@ val multiGlassShader = """
         half b = background.eval(point + offset - abOffset).b;
         half3 refracted_color = half3(r, g, b);
 
+        float4 tint = sceneTint(point, shapes, tints);
+        half3 tinted_color = mix(refracted_color, half3(tint.rgb), tint.a);
+
         // Angled, mirrored rim lighting.
         float fresnel = pow(1.0 - dot(n, viewDir), fresnelPower);
         float2 lightDir = float2(cos(lightAngle), sin(lightAngle));
@@ -142,7 +172,7 @@ val multiGlassShader = """
         float axis = dot(rimDir, lightDir);
         float directional = pow(abs(axis), rimSharpness);
         float rim = fresnel * (rimFloor + (1.0 - rimFloor) * directional) * rimStrength;
-        half3 lit = clamp(refracted_color + half3(rim), 0.0, 1.0);
+        half3 lit = clamp(tinted_color + half3(rim), 0.0, 1.0);
 
         return mix(half4(0.0), half4(lit, 1.0), mask);
     }
@@ -155,7 +185,7 @@ val multiGlassShader = """
 fun RuntimeShader.setGlassAppearanceUniforms(density: Density, mergeRadius: Dp = 24.dp) = with(density) {
     setFloatUniform("extrusion", 4.dp.toPx())
     setFloatUniform("bevelWidth", 30.dp.toPx())
-    setFloatUniform("strength", 60f)
+    setFloatUniform("strength", 100f)
     setFloatUniform("aberration", 16f)
     setFloatUniform("lightAngle", Math.toRadians(45.0).toFloat())
     setFloatUniform("fresnelPower", 1f)
@@ -173,17 +203,23 @@ fun RuntimeShader.setGlassGeometryUniforms(shapes: List<GlassBounds>, panelOrigi
     val centers = FloatArray(MAX_GLASS_COMPONENTS * 2)
     val halfSizes = FloatArray(MAX_GLASS_COMPONENTS * 2)
     val radii = FloatArray(MAX_GLASS_COMPONENTS)
+    val tints = FloatArray(MAX_GLASS_COMPONENTS * 4)
     active.forEachIndexed { i, b ->
         centers[i * 2] = b.center.x - panelOrigin.x
         centers[i * 2 + 1] = b.center.y - panelOrigin.y
         halfSizes[i * 2] = b.halfSize.width
         halfSizes[i * 2 + 1] = b.halfSize.height
         radii[i] = b.cornerRadius
+        tints[i * 4] = b.tint.red
+        tints[i * 4 + 1] = b.tint.green
+        tints[i * 4 + 2] = b.tint.blue
+        tints[i * 4 + 3] = b.tint.alpha
     }
     setIntUniform("count", active.size)
     setFloatUniform("centers", centers)
     setFloatUniform("halfSizes", halfSizes)
     setFloatUniform("cornerRadii", radii)
+    setFloatUniform("tints", tints)
 }
 
 fun glassRenderEffect(shader: RuntimeShader, blurRadiusPx: Float) =
@@ -198,6 +234,7 @@ fun glassRenderEffect(shader: RuntimeShader, blurRadiusPx: Float) =
 fun Modifier.reportGlassBounds(
     density: Density,
     cornerRadius: Dp,
+    tint: Color = Color.Transparent,
     onBounds: (GlassBounds) -> Unit,
 ): Modifier = onPlaced { coords ->
     val size = coords.size
@@ -205,7 +242,8 @@ fun Modifier.reportGlassBounds(
         GlassBounds(
             center = coords.positionInRoot() + Offset(size.width / 2f, size.height / 2f),
             halfSize = Size(size.width / 2f, size.height / 2f),
-            cornerRadius = with(density) { cornerRadius.toPx() }
+            cornerRadius = with(density) { cornerRadius.toPx() },
+            tint = tint,
         )
     )
 }
@@ -236,7 +274,7 @@ fun GlassPanel(
                 glassLayer.record {
                     drawLayer(backgroundLayer)
                 }
-                glassLayer.renderEffect = glassRenderEffect(shader, 4.dp.toPx())
+                glassLayer.renderEffect = glassRenderEffect(shader, 2.dp.toPx())
                 drawLayer(glassLayer)
             }
     )
