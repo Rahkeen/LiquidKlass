@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +60,13 @@ enum class NavigationTabs {
     Search,
     Home,
 }
+
+// Mirror M3's FloatingToolbar metrics so the custom toolbar lines up 1:1 with
+// HorizontalFloatingToolbar. Both are internal to material3, hence the copies:
+// the component box is as tall as a medium fab (FabSizeRange.endInclusive) so
+// the pill sits centered in it, and ToolbarToFabGap separates pill from fab.
+private val ToolbarWithFabSize = 80.dp
+private val ToolbarToFabGap = 8.dp
 
 @Composable
 fun ToolbarExamples() {
@@ -121,18 +129,26 @@ fun CustomHorizontalFloatingToolbar(
     // Read outside the FAB's onPlaced callback, which isn't @Composable.
     val fabTint = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
 
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        // Main Content
+    Row(
+        modifier = modifier.height(ToolbarWithFabSize),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Main Content. Sized to match M3's HorizontalFloatingToolbar: a
+        // ContainerSize-tall pill carrying 8dp of content padding, separated
+        // from the fab by a ToolbarToFabGap.
         Row(
             modifier = Modifier
-                .padding(8.dp)
+                .padding(end = ToolbarToFabGap)
+                .height(FloatingToolbarDefaults.ContainerSize)
                 .clip(CircleShape)
                 .reportGlassBounds(
                     density,
                     cornerRadius = 999.dp,
                     tint = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
                 ) { glassShapes[0] = it }
-                .zIndex(1f)
+                .padding(horizontal = 8.dp)
+                .zIndex(1f),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onToggleFab) {
                 Icon(
@@ -165,8 +181,7 @@ fun CustomHorizontalFloatingToolbar(
             modifier = Modifier
                 .layout { measurable, constraints ->
                     val placeable = measurable.measure(constraints)
-                    val padding = 8.dp.toPx()
-                    val offsetWidth = placeable.width + padding
+                    val offsetWidth = placeable.width + ToolbarToFabGap.toPx()
                     val fabOffset = (progress * offsetWidth).roundToInt()
                     layout(placeable.width, placeable.height) {
                         placeable.placeRelative(-fabOffset, 0)
@@ -209,7 +224,7 @@ fun CustomHorizontalFloatingToolbar(
 }
 
 @Composable
-private fun ImageGrid(modifier: Modifier = Modifier) {
+fun ImageGrid(modifier: Modifier = Modifier) {
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
