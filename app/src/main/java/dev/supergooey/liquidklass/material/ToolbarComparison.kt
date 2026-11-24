@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -51,6 +53,8 @@ fun ToolbarComparisonScreen() {
     val blobBoost = (4f * progress * (1f - progress)).coerceIn(0f, 1f)
     val mergeRadius = 22.dp + 8.dp * blobBoost
 
+    var appearance by remember { mutableStateOf(GlassAppearance()) }
+
     var m3Expanded by remember { mutableStateOf(true) }
     // Vibrant colors put the toolbar pill on primaryContainer and the FAB on
     // tertiaryContainer, same as the custom glass toolbar below.
@@ -65,7 +69,13 @@ fun ToolbarComparisonScreen() {
                 }
         )
 
-        GlassPanel(shader, backgroundLayer, glassShapes.filterNotNull(), mergeRadius = mergeRadius)
+        GlassPanel(
+            shader = shader,
+            backgroundLayer = backgroundLayer,
+            shapes = glassShapes.filterNotNull(),
+            appearance = appearance,
+            mergeRadius = mergeRadius,
+        )
 
         // Both toolbars anchored as one stack in the middle of the screen.
         Column(
@@ -108,6 +118,16 @@ fun ToolbarComparisonScreen() {
                 onToggleFab = { showFab = !showFab },
             )
         }
+
+        GlassControlPanel(
+            appearance = appearance,
+            onAppearanceChange = { appearance = it },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(16.dp)
+                .zIndex(2f),
+        )
     }
 }
 
